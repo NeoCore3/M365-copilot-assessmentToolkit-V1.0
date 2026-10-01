@@ -44,7 +44,7 @@ cd M365-copilot-assessmentToolkit-V1.0
     -SharePointAdminUrl https://client-admin.sharepoint.com -AdminUpn reader@client.com
 ```
 
-Open `output/<Customer>-<timestamp>/CopilotReadinessDashboard.html` in any browser.
+Open `output/<Customer>-<timestamp>/CopilotReadinessDashboard.html` in any browser. More examples (GCC High, two-pass DAG reports, selected services) are in [docs/USAGE.md](docs/USAGE.md).
 
 ## Parameters
 
@@ -108,6 +108,7 @@ Pass = 1, Warning = 0.5, Fail = 0, weighted by risk (Critical 4, High 3, Medium 
 
 ## Documentation
 
+- [docs/USAGE.md](docs/USAGE.md): step-by-step guide with examples for every run mode
 - [docs/SETUP.md](docs/SETUP.md): modules, roles, Graph scopes, clouds
 - [docs/COVERAGE.md](docs/COVERAGE.md): API versus import matrix with Microsoft Learn references
 - [docs/EVIDENCE.md](docs/EVIDENCE.md): how to export each portal report and the headers used to recognize it
