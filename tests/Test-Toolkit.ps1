@@ -36,15 +36,15 @@ Assert ((($status | Where-Object Dataset -eq 'IMP_DspmAiActivity').Rows) -eq '40
 Assert ((($status | Where-Object Dataset -eq 'IMP_DspmAiActivity').Explanation) -match 'limited to 10,000') 'portal row cap is recorded'
 
 $m = Import-Csv (Join-Path $run.FullName 'csv/metrics.csv')
-function MV($k) { ($m | Where-Object Key -eq $k).Value }
-Assert ((MV 'lic.users.copilot') -eq '80') 'directory Copilot licenses = 80 (SKU ID match)'
-Assert ((MV 'lic.ready.licensed') -eq '80') 'readiness licensed = 80'
-Assert ([int](MV 'lic.users.guests') -eq 15) 'guests = 15'
-Assert ([int](MV 'da.sp.wide1000') -eq 3) 'SharePoint sites reachable by 1,000+ users = 3'
-Assert ([int](MV 'da.od.accounts') -eq 200) 'OneDrive split by URL = 200 accounts'
-Assert ([int](MV 'da.eeeu.grants') -eq 30) 'EEEU grants = 30'
-Assert ([int](MV 'pp.agents') -eq 90) 'Copilot Studio inventory = 90'
-foreach ($k in 'use.prompts', 'use.active30Pct', 'chat.active', 'lic.qualifiedPool', 'viva.activeRate', 'lc.inactive180', 'am.dspm.aiActivity', 'ip.dra.sensitiveItems', 'gov.ai.appsProtected') { Assert ($null -ne (MV $k)) "metric $k present" }
+function Get-MetricValue($k) { ($m | Where-Object Key -eq $k).Value }
+Assert ((Get-MetricValue 'lic.users.copilot') -eq '80') 'directory Copilot licenses = 80 (SKU ID match)'
+Assert ((Get-MetricValue 'lic.ready.licensed') -eq '80') 'readiness licensed = 80'
+Assert ([int](Get-MetricValue 'lic.users.guests') -eq 15) 'guests = 15'
+Assert ([int](Get-MetricValue 'da.sp.wide1000') -eq 3) 'SharePoint sites reachable by 1,000+ users = 3'
+Assert ([int](Get-MetricValue 'da.od.accounts') -eq 200) 'OneDrive split by URL = 200 accounts'
+Assert ([int](Get-MetricValue 'da.eeeu.grants') -eq 30) 'EEEU grants = 30'
+Assert ([int](Get-MetricValue 'pp.agents') -eq 90) 'Copilot Studio inventory = 90'
+foreach ($k in 'use.prompts', 'use.active30Pct', 'chat.active', 'lic.qualifiedPool', 'viva.activeRate', 'lc.inactive180', 'am.dspm.aiActivity', 'ip.dra.sensitiveItems', 'gov.ai.appsProtected') { Assert ($null -ne (Get-MetricValue $k)) "metric $k present" }
 
 $c = Import-Csv (Join-Path $run.FullName 'csv/checks.csv')
 Assert ($c.Count -eq 55) "55 checks evaluated ($($c.Count))"
