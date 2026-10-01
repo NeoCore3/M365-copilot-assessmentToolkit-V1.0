@@ -1,0 +1,49 @@
+{
+  "Commercial": {
+    "GraphRoot": "https://graph.microsoft.com",
+    "MgEnvironment": "Global",
+    "ExchangeEnvironmentName": "O365Default",
+    "ComplianceConnectionUri": "",
+    "ComplianceAuthority": "",
+    "SharePointSuffix": ".sharepoint.com",
+    "SharePointRegion": "Default",
+    "AzEnvironment": "AzureCloud",
+    "CopilotReportsSupported": true,
+    "PowerPlatformSupported": true,
+    "FabricSupported": true,
+    "BapRoot": "https://api.bap.microsoft.com",
+    "BapResource": "https://service.powerapps.com/",
+    "PowerPlatformApiRoot": "https://api.powerplatform.com",
+    "PowerPlatformApiResource": "https://api.powerplatform.com",
+    "FabricRoot": "https://api.fabric.microsoft.com",
+    "FabricResource": "https://api.fabric.microsoft.com"
+  },
+  "GCC": {
+    "GraphRoot": "https://graph.microsoft.com",
+    "MgEnvironment": "Global",
+    "ExchangeEnvironmentName": "O365Default",
+    "ComplianceConnectionUri": "",
+    "ComplianceAuthority": "",
+    "SharePointSuffix": ".sharepoint.com",
+    "SharePointRegion": "Default",
+    "AzEnvironment": "AzureCloud",
+    "CopilotReportsSupported": true,
+    "PowerPlatformSupported": false,
+    "FabricSupported": false,
+    "Notes": "GCC uses worldwide Graph and Exchange endpoints. Copilot report availability in GCC is attempted and recorded; failures are reported, not hidden. Power Platform and Fabric API collection is not enabled for government clouds in v1.0: use the evidence import path."
+  },
+  "GCCHigh": {
+    "GraphRoot": "https://graph.microsoft.us",
+    "MgEnvironment": "USGov",
+    "ExchangeEnvironmentName": "O365USGovGCCHigh",
+    "ComplianceConnectionUri": "https://ps.compliance.protection.office365.us/powershell-liveid/",
+    "ComplianceAuthority": "https://login.microsoftonline.us/common",
+    "SharePointSuffix": ".sharepoint.us",
+    "SharePointRegion": "ITAR",
+    "AzEnvironment": "AzureUSGovernment",
+    "CopilotReportsSupported": false,
+    "PowerPlatformSupported": false,
+    "FabricSupported": false,
+    "Notes": "Microsoft Graph Copilot usage reports are not available in US Government L4 per Microsoft Learn. No fallback to commercial endpoints is performed."
+  }
+}

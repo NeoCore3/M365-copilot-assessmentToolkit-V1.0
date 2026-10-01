@@ -1,0 +1,16 @@
+# Client data and run output must never be committed.
+output/
+sample-evidence/
+tests/sample-evidence/
+evidence/
+*Discovery*/
+*.xlsx
+*.docx
+*.zip
+# Keep the synthetic sample dashboard
+!docs/sample-dashboard.html
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

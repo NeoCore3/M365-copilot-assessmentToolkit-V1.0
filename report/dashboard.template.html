@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copilot Readiness Dashboard</title>
+<style>
+:root{
+  --bg:#f5f6f8;--panel:#ffffff;--panel2:#f0f2f5;--text:#1b1f24;--muted:#5d6670;--line:#e1e4e8;--accent:#0f6cbd;--accent2:#e8f1fb;
+  --pass:#107c10;--passbg:#e6f4e6;--warn:#b35900;--warnbg:#fff2e0;--fail:#c50f1f;--failbg:#fde7e9;--info:#0f6cbd;--infobg:#e8f1fb;
+  --man:#6b4fbb;--manbg:#efeafb;--na:#6e7781;--nabg:#eef0f2;--shadow:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
+}
+:root[data-theme="dark"]{
+  --bg:#111418;--panel:#1a1e24;--panel2:#22272e;--text:#e6e9ed;--muted:#9aa4af;--line:#2d333b;--accent:#4fa3ff;--accent2:#16263a;
+  --pass:#54c454;--passbg:#14301a;--warn:#f0a34b;--warnbg:#3a2a12;--fail:#ff6b76;--failbg:#3d1519;--info:#6cb4ff;--infobg:#16263a;
+  --man:#b39dfa;--manbg:#2a2342;--na:#9aa4af;--nabg:#262b32;--shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:14px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+a{color:var(--accent)}
+.app{display:flex;min-height:100vh}
+.side{width:232px;flex:0 0 232px;background:var(--panel);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{padding:18px 18px 12px;border-bottom:1px solid var(--line)}
+.brand b{display:block;font-size:15px}
+.brand span{color:var(--muted);font-size:12px}
+.nav{padding:8px;flex:1;overflow:auto}
+.nav button{all:unset;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:9px 12px;border-radius:6px;cursor:pointer;color:var(--text)}
+.nav button:hover{background:var(--panel2)}
+.nav button.on{background:var(--accent2);color:var(--accent);font-weight:600}
+.nav .grp{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:14px 12px 4px}
+.nav .cnt{margin-left:auto;font-size:12px;color:var(--muted)}
+.sidefoot{padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.main{flex:1;min-width:0}
+.top{display:flex;align-items:center;gap:12px;padding:14px 28px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top h1{font-size:18px;margin:0;font-weight:600}
+.top .sub{color:var(--muted);font-size:13px}
+.top .sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}
+.btn:hover{background:var(--panel2)}
+.menubtn{display:none}
+.content{padding:24px 28px 60px;max-width:1400px}
+.view{display:none}.view.on{display:block}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 12px;font-weight:600}
+.card h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.kpi .v{font-size:30px;font-weight:600;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+.hero{display:flex;gap:28px;align-items:center}
+.ring{position:relative;width:170px;height:170px;flex:0 0 170px}
+.ring svg{transform:rotate(-90deg)}
+.ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .c b{font-size:40px;line-height:1}
+.ring .c span{font-size:12px;color:var(--muted)}
+.rating{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:600;font-size:13px}
+.r-Ready{background:var(--passbg);color:var(--pass)}.r-MostlyReady{background:var(--infobg);color:var(--info)}
+.r-PartiallyReady{background:var(--warnbg);color:var(--warn)}.r-NotReady{background:var(--failbg);color:var(--fail)}.r-Notassessed{background:var(--nabg);color:var(--na)}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--panel2)}
+.stack i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.dom{display:grid;grid-template-columns:minmax(180px,1.6fr) 3fr 60px 120px;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.dom:first-of-type{border-top:0}
+.dom:hover .dn{color:var(--accent)}
+.bar{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.s-Pass{background:var(--passbg);color:var(--pass)}.s-Warn{background:var(--warnbg);color:var(--warn)}.s-Fail{background:var(--failbg);color:var(--fail)}
+.s-Info{background:var(--infobg);color:var(--info)}.s-Manual{background:var(--manbg);color:var(--man)}.s-NotAssessed{background:var(--nabg);color:var(--na)}
+.s-Collected,.s-Imported{background:var(--passbg);color:var(--pass)}.s-Failed{background:var(--failbg);color:var(--fail)}.s-Empty{background:var(--warnbg);color:var(--warn)}
+.s-Unsupported,.s-NotRequested,.s-ManualRequired{background:var(--nabg);color:var(--na)}
+.risk{font-size:12px;font-weight:600}
+.k-Critical{color:var(--fail)}.k-High{color:var(--warn)}.k-Medium{color:var(--info)}.k-Low{color:var(--muted)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filters select,.filters input{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:6px;padding:6px 10px;font:inherit}
+.filters input{min-width:240px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--panel2);cursor:pointer;user-select:none;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel2)}
+.tbl{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.tblwrap{overflow-x:auto}
+td.mono{white-space:nowrap}
+.mono{font-family:Consolas,"Cascadia Mono",Menlo,monospace;font-size:12px}
+.drawer{position:fixed;top:0;right:0;width:min(620px,100%);height:100vh;background:var(--panel);border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .2s;z-index:20;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.drawer header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.drawer header h2{margin:0;font-size:17px;flex:1}
+.drawer .body{padding:18px 22px;overflow:auto}
+.drawer dl{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;margin:0}
+.drawer dt{color:var(--muted);font-size:12px;font-weight:600}
+.drawer dd{margin:0}
+.shade{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;z-index:15}
+.shade.on{display:block}
+.note{border-left:3px solid var(--accent);background:var(--accent2);padding:10px 14px;border-radius:4px;margin:0 0 16px;font-size:13px}
+.nd{background:#fff59d;color:#3b3200;padding:0 4px;border-radius:2px;font-weight:600}
+.pv{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px}
+.pv th{position:static}
+h2.sec{font-size:16px;margin:26px 0 10px}
+@media (max-width:1100px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:1fr 1fr}}
+@media (max-width:820px){
+  .side{position:fixed;left:0;top:0;z-index:30;transform:translateX(-100%);transition:transform .2s}
+  .side.on{transform:none}
+  .menubtn{display:inline-block}
+  .content{padding:16px}
+  .top{padding:12px 16px}
+  .g4,.g3,.g2{grid-template-columns:1fr}
+  .hero{flex-direction:column;align-items:flex-start}
+  .dom{grid-template-columns:1fr 60px;}
+  .dom .bar,.dom .chipcol{display:none}
+  .top h1{font-size:15px}.top .sub{display:none}.top .btn.pr{display:none}
+}
+@media print{.side,.top .btn,.filters{display:none}.view{display:block!important;page-break-after:always}.main{margin:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="brand"><b>Copilot Readiness</b><span id="brandSub"></span></div>
+    <nav class="nav" id="nav">
+      <div class="grp">Assessment</div>
+      <button data-v="overview" class="on">Overview</button>
+      <button data-v="checks">Checks <span class="cnt" id="cntChecks"></span></button>
+      <button data-v="metrics">Metrics <span class="cnt" id="cntMetrics"></span></button>
+      <div class="grp">Domains</div>
+      <div id="navDomains"></div>
+      <div class="grp">Data</div>
+      <button data-v="coverage">Data coverage <span class="cnt" id="cntData"></span></button>
+      <button data-v="evidence">Evidence files <span class="cnt" id="cntEvidence"></span></button>
+      <button data-v="diagnostics">Diagnostics <span class="cnt" id="cntDiag"></span></button>
+      <button data-v="about">About this report</button>
+    </nav>
+    <div class="sidefoot" id="foot"></div>
+  </aside>
+  <div class="main">
+    <div class="top">
+      <button class="btn menubtn" id="menuBtn" aria-label="Menu">&#9776;</button>
+      <div><h1 id="title">Microsoft 365 Copilot Readiness</h1><div class="sub" id="subtitle"></div></div>
+      <div class="sp"></div>
+      <button class="btn" id="themeBtn">Dark mode</button>
+      <button class="btn pr" onclick="window.print()">Print</button>
+    </div>
+    <div class="content">
+      <section class="view on" id="v-overview"></section>
+      <section class="view" id="v-checks"></section>
+      <section class="view" id="v-metrics"></section>
+      <section class="view" id="v-domain"></section>
+      <section class="view" id="v-coverage"></section>
+      <section class="view" id="v-evidence"></section>
+      <section class="view" id="v-diagnostics"></section>
+      <section class="view" id="v-about"></section>
+    </div>
+  </div>
+</div>
+<div class="shade" id="shade"></div>
+<aside class="drawer" id="drawer"><header><h2 id="dTitle"></h2><button class="btn" id="dClose">Close</button></header><div class="body" id="dBody"></div></aside>
+
+<script id="report-data" type="application/json">__REPORT_DATA__</script>
+<script>
+(function(){
+'use strict';
+var D = JSON.parse(document.getElementById('report-data').textContent);
+var STAT = ['Fail','Warn','Pass','Info','Manual','NotAssessed'];
+var STATLABEL = {Pass:'Pass',Warn:'Warning',Fail:'Fail',Info:'Info',Manual:'Manual',NotAssessed:'Not assessed'};
+var RISKORDER = {Critical:0,High:1,Medium:2,Low:3};
+var COLORS = {Pass:'var(--pass)',Warn:'var(--warn)',Fail:'var(--fail)',Info:'var(--info)',Manual:'var(--man)',NotAssessed:'var(--na)'};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function hl(s){return esc(s).replace(/NO DATA AVAILABLE/g,'<span class="nd">NO DATA AVAILABLE</span>');}
+function chip(s){return '<span class="chip s-'+esc(s)+'">'+esc(STATLABEL[s]||s)+'</span>';}
+function ratingCls(r){return 'r-'+String(r||'').replace(/\s/g,'');}
+function scoreColor(s){if(s==null)return 'var(--na)';if(s>=85)return 'var(--pass)';if(s>=70)return 'var(--info)';if(s>=40)return 'var(--warn)';return 'var(--fail)';}
+function el(id){return document.getElementById(id);}
+function fmt(n){return (n==null)?'':Number(n).toLocaleString('en-US');}
+function links(s){if(!s)return '';return s.split(' ').filter(Boolean).map(function(u){var t=u.replace(/^https:\/\/learn\.microsoft\.com\/en-us\//,'');return '<div><a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(t)+'</a></div>';}).join('');}
+
+// Header
+var M = D.meta;
+el('title').textContent = (M.customer ? M.customer+' | ' : '') + 'Microsoft 365 Copilot Readiness';
+el('subtitle').textContent = 'Tenant '+(M.tenantId||'not stated')+' | '+M.cloud+' | Run '+M.runUtc.replace('T',' ').slice(0,16)+' UTC | Mode: '+M.mode;
+el('brandSub').textContent = M.customer || 'Assessment';
+el('foot').innerHTML = 'Toolkit v'+esc(M.toolkitVersion)+'<br>Read-only collection';
+el('cntChecks').textContent = D.checks.length;
+el('cntMetrics').textContent = D.metrics.length;
+el('cntData').textContent = D.datasets.filter(function(d){return d.Status==='Collected'||d.Status==='Imported';}).length+'/'+D.datasets.length;
+el('cntEvidence').textContent = D.inventory.length;
+el('cntDiag').textContent = D.diagnostics.length;
+
+// Theme
+var theme = 'light';
+try{ theme = localStorage.getItem('crd-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'); }catch(e){}
+function applyTheme(){document.documentElement.setAttribute('data-theme',theme);el('themeBtn').textContent = theme==='dark'?'Light mode':'Dark mode';}
+applyTheme();
+el('themeBtn').onclick=function(){theme = theme==='dark'?'light':'dark';try{localStorage.setItem('crd-theme',theme);}catch(e){} applyTheme();};
+el('menuBtn').onclick=function(){el('side').classList.toggle('on');};
+
+// Navigation
+var navDom = el('navDomains');
+D.scores.Domains.forEach(function(d){
+  var b=document.createElement('button'); b.setAttribute('data-v','domain'); b.setAttribute('data-d',d.Domain);
+  b.innerHTML = esc(d.Name)+'<span class="cnt">'+(d.Score==null?'n/a':d.Score)+'</span>'; navDom.appendChild(b);
+});
+function show(v,d){
+  document.querySelectorAll('.nav button').forEach(function(b){b.classList.toggle('on', b.getAttribute('data-v')===v && (v!=='domain' || b.getAttribute('data-d')===d));});
+  document.querySelectorAll('.view').forEach(function(s){s.classList.remove('on');});
+  el('v-'+v).classList.add('on');
+  if(v==='domain') renderDomain(d);
+  el('side').classList.remove('on');
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){show(b.getAttribute('data-v'), b.getAttribute('data-d'));};});
+
+function counts(list){var c={};STAT.forEach(function(s){c[s]=0;});list.forEach(function(x){c[x.Status]=(c[x.Status]||0)+1;});return c;}
+function stackBar(c,total){return '<div class="stack">'+STAT.map(function(s){return c[s]?'<i title="'+STATLABEL[s]+': '+c[s]+'" style="width:'+(100*c[s]/total)+'%;background:'+COLORS[s]+'"></i>':'';}).join('')+'</div>';}
+function legend(c){return '<div class="legend">'+STAT.map(function(s){return '<span><i style="background:'+COLORS[s]+'"></i>'+STATLABEL[s]+' '+c[s]+'</span>';}).join('')+'</div>';}
+
+// Overview
+function renderOverview(){
+  var S=D.scores, c=counts(D.checks), n=D.checks.length;
+  var sc = S.Overall, r=60, circ=2*Math.PI*r, off = circ*(1-(sc||0)/100);
+  var crit = D.checks.filter(function(x){return x.Status==='Fail'||x.Status==='Warn';}).sort(function(a,b){return (RISKORDER[a.Risk]-RISKORDER[b.Risk])||(a.Status==='Fail'?-1:1);}).slice(0,8);
+  var h = '';
+  h += '<div class="note">This dashboard is an automated readiness indicator built from read-only tenant collection and imported portal exports. Figures are computed from the raw data with their denominators. It does not replace the consultant-scored readiness scorecard in the written assessment. Checks without data are shown as <b>Not assessed</b> and are excluded from the score, never counted as failures.</div>';
+  h += '<div class="grid g2"><div class="card"><div class="hero"><div class="ring"><svg width="170" height="170"><circle cx="85" cy="85" r="'+r+'" fill="none" stroke="var(--panel2)" stroke-width="16"/><circle cx="85" cy="85" r="'+r+'" fill="none" stroke="'+scoreColor(sc)+'" stroke-width="16" stroke-linecap="round" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'"/></svg><div class="c"><b>'+(sc==null?'n/a':sc)+'</b><span>of 100</span></div></div>';
+  h += '<div><h3>Automated readiness indicator</h3><div style="margin:6px 0 10px"><span class="rating '+ratingCls(S.Rating)+'">'+esc(S.Rating)+'</span></div>';
+  h += '<div class="small muted">Score covers '+fmt(S.WeightCovered)+' of '+fmt(S.WeightTotal)+' domain weight points. '+S.CoveragePct+'% of checks had enough data to score.</div>';
+  h += '<div class="small muted" style="margin-top:6px">Bands: 85 to 100 Ready, 70 to 84 Mostly Ready, 40 to 69 Partially Ready, below 40 Not Ready.</div></div></div></div>';
+  h += '<div class="card"><h2>Check results</h2>'+stackBar(c,n)+legend(c);
+  h += '<div class="grid g3" style="margin-top:16px">';
+  h += '<div class="kpi"><div class="v" style="color:var(--fail)">'+c.Fail+'</div><div class="l">Failed checks</div></div>';
+  h += '<div class="kpi"><div class="v" style="color:var(--warn)">'+c.Warn+'</div><div class="l">Warnings</div></div>';
+  h += '<div class="kpi"><div class="v" style="color:var(--pass)">'+c.Pass+'</div><div class="l">Passed checks</div></div></div></div></div>';
+  var kp = D.highlights || [];
+  if(kp.length){ h += '<h2 class="sec">Key figures</h2><div class="grid g4">'+kp.map(function(k){return '<div class="card kpi"><div class="v">'+esc(k.Display)+'</div><div class="l">'+esc(k.Label)+'</div><div class="small muted" style="margin-top:6px">'+esc(k.Denominator||'')+'</div></div>';}).join('')+'</div>'; }
+  h += '<h2 class="sec">Domain scores</h2><div class="card">';
+  S.Domains.forEach(function(d){
+    var dc = counts(D.checks.filter(function(x){return x.Domain===d.Domain;}));
+    h += '<div class="dom" data-d="'+d.Domain+'"><div><div class="dn" style="font-weight:600">'+esc(d.Name)+'</div><div class="small muted">Weight '+d.Weight+' | '+d.Scored+' of '+d.Checks+' checks scored'+(d.Confidence==='Low'?' | <b style="color:var(--warn)">low coverage</b>':'')+'</div></div>';
+    h += '<div class="bar"><i style="width:'+(d.Score||0)+'%;background:'+scoreColor(d.Score)+'"></i></div><div style="font-weight:600;text-align:right">'+(d.Score==null?'n/a':d.Score)+'</div>';
+    h += '<div class="chipcol"><span class="rating '+ratingCls(d.Rating)+'" style="font-size:11px">'+esc(d.Rating)+'</span></div></div>';
+  });
+  h += '</div>';
+  if(crit.length){ h += '<h2 class="sec">Priority findings</h2><div class="tbl tblwrap"><table><thead><tr><th>Check</th><th>Risk</th><th>Status</th><th>Finding</th></tr></thead><tbody>'+crit.map(function(x){return '<tr class="click" data-id="'+esc(x.Id)+'"><td><b>'+esc(x.Id)+'</b> '+esc(x.Title)+'</td><td><span class="risk k-'+x.Risk+'">'+x.Risk+'</span></td><td>'+chip(x.Status)+'</td><td>'+hl(x.Finding)+'</td></tr>';}).join('')+'</tbody></table></div>'; }
+  el('v-overview').innerHTML = h;
+  el('v-overview').querySelectorAll('.dom').forEach(function(x){x.onclick=function(){show('domain',x.getAttribute('data-d'));};});
+  bindRows(el('v-overview'));
+}
+
+// Checks table
+var cf = {domain:'',status:'',risk:'',q:''}, csort={k:'Id',dir:1};
+function renderChecks(){
+  var doms = D.scores.Domains;
+  var h = '<div class="filters"><input id="cq" placeholder="Search checks, findings, recommendations" value="'+esc(cf.q)+'">';
+  h += '<select id="cd"><option value="">All domains</option>'+doms.map(function(d){return '<option value="'+d.Domain+'"'+(cf.domain===d.Domain?' selected':'')+'>'+esc(d.Name)+'</option>';}).join('')+'</select>';
+  h += '<select id="cs"><option value="">All statuses</option>'+STAT.map(function(s){return '<option value="'+s+'"'+(cf.status===s?' selected':'')+'>'+STATLABEL[s]+'</option>';}).join('')+'</select>';
+  h += '<select id="cr"><option value="">All risk levels</option>'+['Critical','High','Medium','Low'].map(function(s){return '<option'+(cf.risk===s?' selected':'')+'>'+s+'</option>';}).join('')+'</select>';
+  h += '<span class="small muted" id="cn"></span></div>';
+  h += '<div class="tbl tblwrap"><table><thead><tr><th data-k="Id">ID</th><th data-k="Title">Check</th><th data-k="DomainName">Domain</th><th data-k="Risk">Risk</th><th data-k="Status">Status</th><th>Finding</th></tr></thead><tbody id="ctb"></tbody></table></div>';
+  el('v-checks').innerHTML = h;
+  ['cq','cd','cs','cr'].forEach(function(id){el(id).oninput=el(id).onchange=function(){cf.q=el('cq').value;cf.domain=el('cd').value;cf.status=el('cs').value;cf.risk=el('cr').value;fillChecks();};});
+  el('v-checks').querySelectorAll('th[data-k]').forEach(function(th){th.onclick=function(){var k=th.getAttribute('data-k');csort.dir = csort.k===k?-csort.dir:1;csort.k=k;fillChecks();};});
+  fillChecks();
+}
+function fillChecks(){
+  var q=cf.q.toLowerCase();
+  var rows = D.checks.filter(function(x){
+    return (!cf.domain||x.Domain===cf.domain)&&(!cf.status||x.Status===cf.status)&&(!cf.risk||x.Risk===cf.risk)&&(!q||(x.Id+' '+x.Title+' '+x.Finding+' '+x.Recommendation).toLowerCase().indexOf(q)>=0);
+  }).sort(function(a,b){var k=csort.k,va=a[k],vb=b[k];if(k==='Risk'){va=RISKORDER[va];vb=RISKORDER[vb];}if(k==='Status'){va=STAT.indexOf(va);vb=STAT.indexOf(vb);}return (va>vb?1:va<vb?-1:0)*csort.dir;});
+  el('cn').textContent = rows.length+' of '+D.checks.length+' checks';
+  el('ctb').innerHTML = rows.map(function(x){return '<tr class="click" data-id="'+esc(x.Id)+'"><td class="mono">'+esc(x.Id)+'</td><td><b>'+esc(x.Title)+'</b></td><td class="small">'+esc(x.DomainName)+'</td><td><span class="risk k-'+x.Risk+'">'+x.Risk+'</span></td><td>'+chip(x.Status)+'</td><td class="small">'+hl(x.Finding)+'</td></tr>';}).join('') || '<tr><td colspan="6" class="muted">No checks match the filters.</td></tr>';
+  bindRows(el('v-checks'));
+}
+function bindRows(root){root.querySelectorAll('tr.click[data-id]').forEach(function(tr){tr.onclick=function(){openCheck(tr.getAttribute('data-id'));};});}
+
+// Drawer
+function openCheck(id){
+  var x = D.checks.filter(function(c){return c.Id===id;})[0]; if(!x) return;
+  el('dTitle').innerHTML = esc(x.Id)+' '+esc(x.Title);
+  var mk = (x.Metrics||'').split(', ').filter(Boolean).map(function(k){return D.metrics.filter(function(m){return m.Key===k;})[0];}).filter(Boolean);
+  var h = '<dl><dt>Status</dt><dd>'+chip(x.Status)+'</dd><dt>Risk</dt><dd><span class="risk k-'+x.Risk+'">'+x.Risk+'</span></dd><dt>Domain</dt><dd>'+esc(x.DomainName)+'</dd>';
+  h += '<dt>Finding</dt><dd>'+hl(x.Finding)+'</dd><dt>Recommendation</dt><dd>'+esc(x.Recommendation)+'</dd>';
+  if(x.Threshold) h += '<dt>Threshold</dt><dd>'+esc(x.Threshold)+'</dd>';
+  if(x.DataNeeded && (x.Status==='NotAssessed'||x.Status==='Manual')) h += '<dt>Data needed</dt><dd>'+esc(x.DataNeeded)+'</dd>';
+  if(x.Evidence) h += '<dt>Evidence</dt><dd class="small">'+esc(x.Evidence).split(' | ').join('<br>')+'</dd>';
+  if(x.Learn) h += '<dt>Microsoft Learn</dt><dd class="small">'+links(x.Learn)+'</dd>';
+  h += '</dl>';
+  if(mk.length){ h += '<h2 class="sec">Metrics</h2><div class="tblwrap"><table><thead><tr><th>Metric</th><th>Value</th><th>Denominator</th></tr></thead><tbody>'+mk.map(function(m){return '<tr><td>'+esc(m.Label)+(m.Note?'<div class="small muted">'+esc(m.Note)+'</div>':'')+'</td><td><b>'+esc(m.Display)+'</b></td><td class="small">'+esc(m.Denominator)+'</td></tr>';}).join('')+'</tbody></table></div>'; }
+  el('dBody').innerHTML = h;
+  el('drawer').classList.add('on'); el('shade').classList.add('on');
+}
+function closeDrawer(){el('drawer').classList.remove('on');el('shade').classList.remove('on');}
+el('dClose').onclick=closeDrawer; el('shade').onclick=closeDrawer;
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer();});
+
+// Domain view
+function renderDomain(code){
+  var d = D.scores.Domains.filter(function(x){return x.Domain===code;})[0]; if(!d) return;
+  var cs = D.checks.filter(function(x){return x.Domain===code;});
+  var ms = D.metrics.filter(function(x){return x.Domain===code;});
+  var c = counts(cs);
+  var h = '<div class="grid g2"><div class="card"><h3>'+esc(d.Name)+'</h3><div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:40px;font-weight:600;color:'+scoreColor(d.Score)+'">'+(d.Score==null?'n/a':d.Score)+'</div><span class="rating '+ratingCls(d.Rating)+'">'+esc(d.Rating)+'</span></div><div class="small muted">Domain weight '+d.Weight+'. '+d.Scored+' of '+d.Checks+' checks scored.</div></div>';
+  h += '<div class="card"><h3>Checks</h3>'+stackBar(c,cs.length||1)+legend(c)+'</div></div>';
+  h += '<h2 class="sec">Checks</h2><div class="tbl tblwrap"><table><thead><tr><th>ID</th><th>Check</th><th>Risk</th><th>Status</th><th>Finding</th></tr></thead><tbody>'+cs.map(function(x){return '<tr class="click" data-id="'+esc(x.Id)+'"><td class="mono">'+esc(x.Id)+'</td><td><b>'+esc(x.Title)+'</b></td><td><span class="risk k-'+x.Risk+'">'+x.Risk+'</span></td><td>'+chip(x.Status)+'</td><td class="small">'+hl(x.Finding)+'</td></tr>';}).join('')+'</tbody></table></div>';
+  h += '<h2 class="sec">Metrics</h2>'+metricTable(ms);
+  el('v-domain').innerHTML = h; bindRows(el('v-domain'));
+}
+function metricTable(ms){
+  if(!ms.length) return '<div class="card muted"><span class="nd">NO DATA AVAILABLE</span> No metrics were produced for this domain. See Data coverage for the datasets that would populate it.</div>';
+  return '<div class="tbl tblwrap"><table><thead><tr><th>Metric</th><th>Value</th><th>Denominator</th><th>Source</th></tr></thead><tbody>'+ms.map(function(m){return '<tr><td>'+esc(m.Label)+(m.Note?'<div class="small muted">'+esc(m.Note)+'</div>':'')+'</td><td><b>'+esc(m.Display)+'</b></td><td class="small">'+esc(m.Denominator)+'</td><td class="small mono">'+esc(m.Source).split(' | ').join('<br>')+'</td></tr>';}).join('')+'</tbody></table></div>';
+}
+
+// Metrics view
+function renderMetrics(){
+  var h = '<div class="filters"><input id="mq" placeholder="Search metrics"><select id="md"><option value="">All domains</option>'+D.scores.Domains.map(function(d){return '<option value="'+d.Domain+'">'+esc(d.Name)+'</option>';}).join('')+'</select></div><div id="mt"></div>';
+  el('v-metrics').innerHTML = h;
+  function fill(){var q=el('mq').value.toLowerCase(),dd=el('md').value;el('mt').innerHTML = metricTable(D.metrics.filter(function(m){return (!dd||m.Domain===dd)&&(!q||(m.Label+' '+m.Display+' '+m.Source+' '+m.Key).toLowerCase().indexOf(q)>=0);}));}
+  el('mq').oninput=fill; el('md').onchange=fill; fill();
+}
+
+// Coverage
+function renderCoverage(){
+  var ds = D.datasets;
+  var by = {}; ds.forEach(function(d){by[d.Status]=(by[d.Status]||0)+1;});
+  var h = '<div class="note">Each dataset is either collected through a read-only API or PowerShell call, or imported from a portal export recognized by its column headers. Failed and unsupported datasets explain why, so a gap is visible at the point where it occurs.</div>';
+  h += '<div class="grid g4">'+Object.keys(by).map(function(k){return '<div class="card kpi"><div class="v">'+by[k]+'</div><div class="l">'+chip(k)+'</div></div>';}).join('')+'</div>';
+  h += '<h2 class="sec">Datasets</h2><div class="tbl tblwrap"><table><thead><tr><th>Dataset</th><th>Workstream</th><th>Status</th><th>Origin</th><th>Rows</th><th>Source</th><th>Explanation</th></tr></thead><tbody>'+ds.map(function(d,i){return '<tr'+(d.Preview?' class="click" data-pv="'+i+'"':'')+'><td class="mono">'+esc(d.Dataset)+'</td><td>'+esc(d.Workstream)+'</td><td>'+chip(d.Status)+'</td><td>'+esc(d.Origin)+'</td><td>'+fmt(d.Rows)+'</td><td class="small">'+esc(d.Source)+'</td><td class="small">'+esc(d.Explanation)+'</td></tr>';}).join('')+'</tbody></table></div>';
+  el('v-coverage').innerHTML = h;
+  el('v-coverage').querySelectorAll('tr[data-pv]').forEach(function(tr){tr.onclick=function(){var d=ds[+tr.getAttribute('data-pv')];var cols=Object.keys(d.Preview[0]||{});el('dTitle').textContent=d.Dataset+' (first '+d.Preview.length+' rows)';el('dBody').innerHTML='<div class="pv"><table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr></thead><tbody>'+d.Preview.map(function(r){return '<tr>'+cols.map(function(c){return '<td class="small">'+esc(r[c])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';el('drawer').classList.add('on');el('shade').classList.add('on');};});
+}
+function simpleTable(target, rows, cols, empty){
+  if(!rows.length){el(target).innerHTML='<div class="card muted">'+esc(empty)+'</div>';return;}
+  el(target).innerHTML = '<div class="tbl tblwrap"><table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c[1])+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+cols.map(function(c){var v=r[c[0]];return '<td class="small'+(c[2]?' mono':'')+'">'+(c[0]==='Status'?chip(v):esc(v))+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
+}
+function renderAbout(){
+  var h = '<div class="card"><h2>About this report</h2>';
+  h += '<p>Generated by the Microsoft 365 Copilot Readiness Assessment Toolkit v'+esc(M.toolkitVersion)+' on '+esc(M.runUtc)+'. Collection is read-only: it uses delegated sign-in and Get or report calls only.</p>';
+  h += '<h3>Scoring</h3><p>Each scored check earns 1 point for Pass, 0.5 for Warning, and 0 for Fail, weighted by risk (Critical 4, High 3, Medium 2, Low 1). A domain score is the weighted average of its scored checks. The overall indicator is the average of domain scores weighted by domain weight, renormalized over the domains that could be scored. Info, Manual, and Not assessed checks are not scored. Thresholds are SHI delivery conventions unless the recommendation cites a Microsoft Learn limit; see docs/CHECKS.md.</p>';
+  h += '<h3>Evidence rules</h3><p>Every figure is recomputed from the raw export or API response and carries its denominator. Different exports taken on different dates are different populations; where two sources disagree both values are shown. Portal exports that the portal caps (for example Activity explorer exports limited to 10,000 rows) are labeled as samples.</p>';
+  h += '<h3>Run parameters</h3><div class="tblwrap"><table><tbody>'+Object.keys(M).map(function(k){return '<tr><td class="mono">'+esc(k)+'</td><td>'+esc(Array.isArray(M[k])?M[k].join(', '):M[k])+'</td></tr>';}).join('')+'</tbody></table></div></div>';
+  el('v-about').innerHTML = h;
+}
+
+renderOverview(); renderChecks(); renderMetrics(); renderCoverage(); renderAbout();
+el('v-evidence').innerHTML='<div class="note">Every file found in the evidence folders, with its SHA-256 hash for chain of custody and the dataset it was recognized as.</div><div id="evt"></div>';
+simpleTable('evt', D.inventory, [['File','File'],['Dataset','Recognized as',1],['Rows','Rows'],['SizeBytes','Bytes'],['LastWriteUtc','Modified (UTC)'],['Note','Note'],['Sha256','SHA-256',1]], 'No evidence folder was supplied.');
+el('v-diagnostics').innerHTML='<div id="dgt"></div>';
+simpleTable('dgt', D.diagnostics, [['TimeUtc','Time (UTC)'],['Area','Area'],['Operation','Operation'],['Message','Message'],['Guidance','Guidance']], 'No errors were recorded during this run.');
+})();
+</script>
+</body>
+</html>
