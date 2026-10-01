@@ -7,7 +7,11 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $fail = 0
-function Assert([bool]$Condition, [string]$Message) { if ($Condition) { Write-Host "  PASS  $Message" -ForegroundColor Green } else { Write-Host "  FAIL  $Message" -ForegroundColor Red; $script:fail++ } }
+function Assert([bool]$Condition, [string]$Message) {
+    if ($Condition) { Write-Host "  PASS  $Message" -ForegroundColor Green }
+    else { Write-Host "  FAIL  $Message" -ForegroundColor Red; $script:fail++; if ($env:GITHUB_ACTIONS) { Write-Host "::error title=Test failed::$Message" } }
+}
+trap { if ($env:GITHUB_ACTIONS) { Write-Host ("::error title=Unhandled error::{0} at {1}" -f $_.Exception.Message, $_.InvocationInfo.PositionMessage -replace "`r?`n", ' ') }; throw }
 
 Write-Host 'Parsing scripts'
 foreach ($f in Get-ChildItem $root -Recurse -Filter *.ps1) {
