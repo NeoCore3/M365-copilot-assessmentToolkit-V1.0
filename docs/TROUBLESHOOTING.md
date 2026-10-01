@@ -5,10 +5,14 @@ Every failure is recorded in `csv/diagnostics.csv` and on the dashboard Diagnost
 | Symptom | Cause and fix |
 |---|---|
 | `Signed-in tenant ... does not match -TenantId` | The account signed in to a different tenant. Sign out (`Disconnect-MgGraph`) and use an account in the target tenant. |
-| Graph datasets Failed with 403 | Missing admin consent for a scope or missing role. Consent to the scopes in SETUP.md or ask the client admin to grant them. |
-| Copilot usage datasets Unsupported | Copilot report APIs are not available in GCC High. Import the portal export. |
+| Graph datasets Failed with 403 | Missing admin consent for a scope or missing role. See PERMISSIONS.md section 2. |
+| Graph_CopilotUsage fails with 403 but other Graph data works | The per-user Copilot usage API does not accept Global Reader. Add Reports Reader (or AI Administrator) to the account. |
+| Graph_SecureScore fails with 403 | Add Security Reader. |
+| Graph_CopilotPackages fails | Microsoft Learn states the packages API requires a Microsoft Agent 365 license. Record it as not available. |
+| Copilot usage, report settings, or packages Unsupported | These APIs are global service only per Microsoft Learn (not GCC High). Import the portal export. |
+| `Connect-SPOService` access denied | The SharePoint module requires SharePoint Administrator. Activate the PIM role, or skip SharePoint collection and import the admin center downloads. |
 | `Connect-SPOService` fails on PowerShell 7 | Install the latest Microsoft.Online.SharePoint.PowerShell. On Windows the toolkit retries with Windows PowerShell compatibility. Use the `-admin` URL. |
-| DAG cmdlets not found or fail | Requires SharePoint Advanced Management and module 16.0.25409 or later (16.0.27215.12000 or later for Everyone and EEEU item reports). Otherwise download the reports from the SharePoint admin center and import them. |
+| DAG cmdlets not found or fail | Requires SharePoint Advanced Management (Microsoft 365 E5 without it gets activity reports only, no snapshot reports) and a current SharePoint module (`Update-Module Microsoft.Online.SharePoint.PowerShell`). Otherwise download the reports from the SharePoint admin center and import them. |
 | DAG reports not ready | Generation takes hours. Run `-DagMode Start`, then later `-DagMode Export`. |
 | `Search-UnifiedAuditLog` fails | Needs an audit role; the CopilotInteraction record type requires a current ExchangeOnlineManagement module. Search in the Purview portal and treat the result as evidence. |
 | Power Platform or Fabric token refused | Install Az.Accounts and sign in with Power Platform Administrator or Fabric Administrator. Otherwise export the inventory from the Power Platform admin center. |

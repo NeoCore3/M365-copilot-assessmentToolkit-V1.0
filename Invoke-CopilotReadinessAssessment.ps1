@@ -38,6 +38,7 @@ param(
     [ValidateSet('Graph', 'SharePoint', 'Purview', 'Exchange', 'PowerPlatform', 'Fabric', 'All')][string[]]$Collect = @('All'),
     [switch]$OfflineOnly,
     [string]$AdminUpn,
+    [string]$GraphClientId,
     [string]$SharePointAdminUrl,
     [ValidateSet('None', 'Start', 'Export')][string]$DagMode = 'None',
     [ValidateRange(1, 180)][int]$AuditDays = 7,
@@ -71,7 +72,7 @@ Write-Log ("Mode: {0}; cloud: {1}" -f $(if ($OfflineOnly) { 'Offline (import onl
 
 $want = if ($Collect -contains 'All') { @('Graph', 'SharePoint', 'Purview', 'Exchange', 'PowerPlatform', 'Fabric') } else { $Collect }
 if (-not $OfflineOnly) {
-    if ('Graph' -in $want) { Invoke-GraphCollection -CloudProfile $cloudProfile -TenantId $TenantId -Cloud $Cloud }
+    if ('Graph' -in $want) { Invoke-GraphCollection -CloudProfile $cloudProfile -TenantId $TenantId -Cloud $Cloud -ClientId $GraphClientId }
     if ('SharePoint' -in $want) {
         if ($SharePointAdminUrl) { Invoke-SharePointCollection -AdminUrl $SharePointAdminUrl -CloudProfile $cloudProfile -DagMode $DagMode }
         else { foreach ($id in 'SPO_Tenant', 'SPO_Sites', 'SPO_OneDrive') { Add-Dataset -Id $id -Workstream 'SharePoint' -Status 'NotRequested' -Source 'Connect-SPOService' -Explanation 'Skipped: -SharePointAdminUrl was not supplied.' } }

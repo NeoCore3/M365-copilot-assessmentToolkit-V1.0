@@ -11,4 +11,6 @@ First release of the rebuilt toolkit (replaces NeoCore3/m365-copilot-assessmen).
 - Self-contained HTML dashboard (overview, domains, checks with details panel, metrics, data coverage, evidence inventory with SHA-256, diagnostics, dark mode, print).
 - CSV exports for metrics, checks, domain scores, dataset status, evidence inventory, diagnostics, and normalized source data; manifest and run log.
 - Repairs the Copilot Search export (unquoted commas), detects OneDrive versus SharePoint DAG reports by URL, splits Everyone and EEEU item reports, keeps older snapshots as prior versions, labels portal-capped exports as samples.
+- Permissions verified against Microsoft Learn: docs/PERMISSIONS.md (roles, Graph scopes, consent options, per-API requirements, access request template), Test-Prerequisites.ps1, and -GraphClientId for a client-registered app.
+- Global-service-only Graph APIs (Copilot reports, report settings, Copilot packages) are marked Unsupported in GCC High instead of being called.
 - Synthetic sample evidence generator, offline self-test, and GitHub Actions validation on Windows and Linux.

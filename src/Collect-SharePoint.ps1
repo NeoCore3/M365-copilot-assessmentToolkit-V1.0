@@ -1,6 +1,6 @@
 # SharePoint Online collectors (read-only) and SharePoint Advanced Management data access governance (DAG) reports.
-# Requires Microsoft.Online.SharePoint.PowerShell. DAG cmdlets need SharePoint Advanced Management and module 16.0.25409 or later
-# (EEEU and Everyone item reports need 16.0.27215.12000 or later), per Microsoft Learn.
+# Requires Microsoft.Online.SharePoint.PowerShell (keep it current; the DAG cmdlets exist only in recent versions)
+# and the SharePoint Administrator role. DAG snapshot reports need SharePoint Advanced Management.
 
 function Connect-SpoAdmin {
     param([string]$AdminUrl, $CloudProfile)

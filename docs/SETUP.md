@@ -1,56 +1,78 @@
 # Setup
 
-## Requirements
+This page covers the machine, modules, clouds, and the run sequence. Roles, Microsoft Graph scopes, and consent are in [PERMISSIONS.md](PERMISSIONS.md).
 
-- PowerShell 7.2 or later (Windows, macOS, or Linux). On Windows, the SharePoint module may load through Windows PowerShell compatibility; the toolkit handles this.
-- Modules for live collection (`./Install-Prerequisites.ps1` installs them for the current user):
+## 1. Machine requirements
 
-| Module | Used for |
+| Requirement | Detail |
 |---|---|
-| Microsoft.Graph.Authentication | Microsoft Graph requests |
-| ExchangeOnlineManagement 3.x | Security & Compliance PowerShell and Exchange Online audit |
-| Microsoft.Online.SharePoint.PowerShell | SharePoint tenant, sites, data access governance (16.0.25409 or later; 16.0.27215.12000 or later for Everyone and EEEU item reports) |
-| Az.Accounts | Delegated tokens for Power Platform and Fabric APIs |
+| Operating system | Windows 10 or 11, or Windows Server 2019 or later, for a full run. macOS and Linux can run offline analysis and the Graph, Purview, Exchange, Power Platform, and Fabric collectors, but not the SharePoint collector (the SharePoint module is Windows only). |
+| PowerShell | PowerShell 7.2 or later (`pwsh`). Install: [Installing PowerShell on Windows](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows). Windows PowerShell 5.1 must also be present on Windows (it is by default) for the SharePoint module compatibility load. |
+| Browser | Needed for interactive sign-in and to open the dashboard. Any current browser. |
+| Network | Outbound HTTPS to Microsoft 365, Graph, and login endpoints, plus the PowerShell Gallery for module installs. See [PERMISSIONS.md, section 8](PERMISSIONS.md#8-network). |
+| Disk | About 100 MB per run for large tenants (the normalized CSVs). |
+| Execution policy | If scripts are blocked: `Unblock-File -Path .\*.ps1, .\src\*.ps1, .\tests\*.ps1`, or run `pwsh -ExecutionPolicy Bypass -File ...` for the session. |
 
-No module is needed for `-OfflineOnly`.
+## 2. Modules
 
-## Sign-in model
+Only needed for live collection. Offline analysis (`-OfflineOnly`) needs no modules.
 
-All collection is delegated and interactive. The toolkit only issues `GET` requests, report functions, and `Get-*` cmdlets. The one exception is `-DagMode Start`, which asks SharePoint Advanced Management to generate data access governance reports; it does not change permissions or content. It is off by default.
+```powershell
+./Install-Prerequisites.ps1        # installs or updates for the current user
+./Test-Prerequisites.ps1           # checks versions and prints the access the account needs
+```
 
-Use a dedicated read-only assessment account, approved by the client, with the least roles below.
-
-## Roles
-
-| Collector | Least role that works | Notes |
+| Module | Collectors | Notes |
 |---|---|---|
-| Graph | Global Reader plus Reports Reader | Reports Reader covers usage reports. Copilot catalog may need a Copilot or AI admin role; see the Learn page for the packages API. |
-| SharePoint | SharePoint Administrator | Data access governance reports also need SharePoint Advanced Management (or Copilot licensing that includes it). |
-| Purview | Compliance Administrator or Global Reader | Needed for Get-Label, Get-DlpCompliancePolicy, Get-RetentionCompliancePolicy. |
-| Exchange audit | View-Only Audit Logs (and Global Reader for configuration) | Search-UnifiedAuditLog requires an audit role. |
-| Power Platform | Power Platform Administrator | Inventory API is delegated only. |
-| Fabric | Fabric Administrator | Tenant settings API. |
+| Microsoft.Graph.Authentication | Graph | Only the authentication module is used; requests go through `Invoke-MgGraphRequest`. |
+| Microsoft.Online.SharePoint.PowerShell | SharePoint | Windows only. Keep current; data access governance cmdlets exist only in recent versions. |
+| ExchangeOnlineManagement 3.x | Purview, Exchange | Provides `Connect-IPPSSession` and `Connect-ExchangeOnline`. |
+| Az.Accounts | Power Platform, Fabric | Used only to obtain delegated tokens. Skip with `./Install-Prerequisites.ps1 -SkipAz` if you will not collect these. |
 
-## Microsoft Graph scopes
+## 3. Access
 
-Requested by `Connect-MgGraph` (admin consent is needed once for the Microsoft Graph Command Line Tools app, or use a client-approved app):
+Short version (full detail and Learn references in [PERMISSIONS.md](PERMISSIONS.md)):
 
-`Organization.Read.All, User.Read.All, ReportSettings.Read.All, Reports.Read.All, Policy.Read.All, RoleManagement.Read.Directory, SharePointTenantSettings.Read.All, CopilotPackages.Read.All, SecurityEvents.Read.All`
+| Collector | Roles for the assessment account | Graph scopes or API permission |
+|---|---|---|
+| Graph | Global Reader, Reports Reader (required for per-user Copilot usage), Security Reader (Secure Score) | Nine delegated scopes with admin consent |
+| SharePoint | SharePoint Administrator (PIM, activate for the run); SharePoint Advanced Management license for DAG snapshot reports | n/a |
+| Purview | Global Reader (Purview Global Reader role group) | n/a |
+| Exchange | View-Only Audit Logs | n/a |
+| Power Platform | Power Platform Administrator for environments; Global Reader for inventory | Delegated token through Az.Accounts |
+| Fabric | Fabric Administrator | Delegated token (Tenant.Read.All) through Az.Accounts |
 
-If usage reports conceal user names (Microsoft 365 admin center > Settings > Org settings > Reports), joins between exports by user principal name are not possible. The toolkit detects concealed names and skips the join-based metrics rather than producing wrong figures. Ask the client to show names for the assessment window or accept the reduced analysis.
+## 4. Clouds
 
-## Clouds
-
-| Cloud | Graph | Exchange / Compliance | SharePoint | Copilot usage APIs | Power Platform and Fabric APIs |
+| Cloud | `-Cloud` | Graph | Exchange / Compliance | SharePoint admin URL | APIs not available, import instead |
 |---|---|---|---|---|---|
-| Commercial | graph.microsoft.com | default | Default region | Yes | Yes |
-| GCC | graph.microsoft.com | default | Default region | Yes | Import portal exports (disabled in v1.0) |
-| GCC High | graph.microsoft.us | O365USGovGCCHigh, ps.compliance.protection.office365.us | ITAR region | Not available (import the portal export) | Import portal exports (disabled in v1.0) |
+| Commercial | `Commercial` | graph.microsoft.com | default | `https://<tenant>-admin.sharepoint.com` | none |
+| GCC | `GCC` | graph.microsoft.com | default | `https://<tenant>-admin.sharepoint.com` | Power Platform and Fabric APIs (disabled in v1.0) |
+| GCC High | `GCCHigh` | graph.microsoft.us | O365USGovGCCHigh; `ps.compliance.protection.office365.us` | `https://<tenant>-admin.sharepoint.us` (region ITAR) | Copilot report APIs, report settings, Copilot packages (Learn: global service only), Power Platform and Fabric APIs |
 
 Endpoints are in `config/clouds.json`.
 
-## Recommended run sequence
+## 5. Run sequence for an engagement
 
-1. Day 1: ask the client to export the portal reports in [EVIDENCE.md](EVIDENCE.md) into one folder. If SharePoint Advanced Management is available, run with `-Collect SharePoint -DagMode Start` to request the data access governance reports.
-2. Day 2 or later (reports take hours): run the full assessment with `-DagMode Export` and `-EvidencePath` pointing at the export folder.
-3. Re-run with `-OfflineOnly` whenever new exports arrive; collection does not need to be repeated.
+| When | Who | Action |
+|---|---|---|
+| Kickoff | Client admin | Create or nominate the assessment account, assign roles, grant Graph consent ([PERMISSIONS.md section 9](PERMISSIONS.md#9-access-request-template) has a request template). Decide on report name concealment. |
+| Kickoff | Client admin or consultant | Export the portal reports in [EVIDENCE.md](EVIDENCE.md) into one folder. |
+| Day 1 | Consultant | `./Test-Prerequisites.ps1`. If SharePoint Advanced Management is available: `-Collect SharePoint -DagMode Start` to request DAG reports. |
+| Day 2 or later | Consultant | Full run with `-DagMode Export` and `-EvidencePath`. |
+| Any time | Consultant | Re-run with `-OfflineOnly` when new exports arrive. Collection does not need repeating. |
+| Close | Client admin | Remove the roles, deactivate PIM eligibility, remove consent or delete the app registration if one was created. |
+
+## 6. First live run
+
+```powershell
+./Test-Prerequisites.ps1
+./Invoke-CopilotReadinessAssessment.ps1 `
+    -TenantId <tenant-guid> `
+    -CustomerName '<Client>' `
+    -EvidencePath '<path to portal exports>' `
+    -SharePointAdminUrl 'https://<tenant>-admin.sharepoint.com' `
+    -AdminUpn '<assessment account UPN>'
+```
+
+Expect up to five sign-in prompts: Microsoft Graph, SharePoint, Security & Compliance, Exchange Online, and one Azure sign-in if Power Platform or Fabric are collected. After the run, review `csv/diagnostics.csv` (or the dashboard Diagnostics page) for anything that failed for lack of a role, fix it, and re-run only that collector with `-Collect`.

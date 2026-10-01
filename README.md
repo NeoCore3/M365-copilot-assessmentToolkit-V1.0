@@ -23,6 +23,20 @@ It supports the Discover phase of a Copilot readiness, enablement, and expansion
 
 Portal exports are recognized by their **column headers**, not by file name, so renamed files still import. Every file in the evidence folder is inventoried with its SHA-256 hash.
 
+## Requirements at a glance
+
+| Area | Requirement |
+|---|---|
+| Machine | Windows 10/11 or Server 2019+ for a full run (macOS and Linux for offline analysis and all collectors except SharePoint) |
+| PowerShell | 7.2 or later |
+| Modules (live runs only) | Microsoft.Graph.Authentication, Microsoft.Online.SharePoint.PowerShell, ExchangeOnlineManagement 3.x, Az.Accounts (`./Install-Prerequisites.ps1`) |
+| Assessment account roles | Global Reader, Reports Reader, Security Reader, Exchange View-Only Audit Logs; SharePoint Administrator through PIM for the SharePoint collector; optional Power Platform Administrator and Fabric Administrator through PIM |
+| Microsoft Graph | Nine read-only delegated scopes with admin consent: Organization.Read.All, User.Read.All, ReportSettings.Read.All, Reports.Read.All, Policy.Read.All, RoleManagement.Read.Directory, SharePointTenantSettings.Read.All, CopilotPackages.Read.All, SecurityEvents.Read.All |
+| Licensing notes | SharePoint Advanced Management for data access governance snapshot reports; Learn states the Copilot packages API requires a Microsoft Agent 365 license |
+| Offline analysis | No sign-in, no modules, no roles; only the exported files |
+
+Full detail, Microsoft Learn references, consent options (including a dedicated app registration), and an access request template: **[docs/PERMISSIONS.md](docs/PERMISSIONS.md)**. Machine setup and run sequence: [docs/SETUP.md](docs/SETUP.md).
+
 ## Quick start
 
 ```powershell
@@ -39,6 +53,7 @@ cd M365-copilot-assessmentToolkit-V1.0
 
 # 3. Full run: collect from the tenant and import the portal exports
 ./Install-Prerequisites.ps1
+./Test-Prerequisites.ps1          # checks modules and prints the roles the account needs
 ./Invoke-CopilotReadinessAssessment.ps1 -TenantId <tenant-guid> -CustomerName 'Client' `
     -EvidencePath 'E:\Client\Discovery Documents' `
     -SharePointAdminUrl https://client-admin.sharepoint.com -AdminUpn reader@client.com
@@ -58,6 +73,7 @@ Open `output/<Customer>-<timestamp>/CopilotReadinessDashboard.html` in any brows
 | `-Collect` | `All` (default) or any of `Graph, SharePoint, Purview, Exchange, PowerPlatform, Fabric`. |
 | `-OfflineOnly` | No sign-in. Import and analyze evidence files only. |
 | `-AdminUpn` | Pre-fills the Exchange and Security & Compliance sign-in. |
+| `-GraphClientId` | Application ID of a client-registered app for Microsoft Graph sign-in (see PERMISSIONS.md, Option B). Default: Microsoft Graph Command Line Tools. |
 | `-SharePointAdminUrl` | `https://<tenant>-admin.sharepoint.com`. SharePoint collection is skipped without it. |
 | `-DagMode` | `None` (default), `Start` (request SharePoint data access governance reports), or `Export` (download completed reports and import them). |
 | `-AuditDays` | Window for the CopilotInteraction audit sample. Default 7. |
@@ -109,7 +125,8 @@ Pass = 1, Warning = 0.5, Fail = 0, weighted by risk (Critical 4, High 3, Medium 
 ## Documentation
 
 - [docs/USAGE.md](docs/USAGE.md): step-by-step guide with examples for every run mode
-- [docs/SETUP.md](docs/SETUP.md): modules, roles, Graph scopes, clouds
+- [docs/PERMISSIONS.md](docs/PERMISSIONS.md): roles, Graph scopes and consent, per-API requirements, access request template
+- [docs/SETUP.md](docs/SETUP.md): machine requirements, modules, clouds, run sequence
 - [docs/COVERAGE.md](docs/COVERAGE.md): API versus import matrix with Microsoft Learn references
 - [docs/EVIDENCE.md](docs/EVIDENCE.md): how to export each portal report and the headers used to recognize it
 - [docs/CHECKS.md](docs/CHECKS.md): all checks, thresholds, and data sources

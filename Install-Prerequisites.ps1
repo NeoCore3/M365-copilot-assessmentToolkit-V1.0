@@ -19,4 +19,4 @@ foreach ($m in $modules) {
     }
     catch { Write-Warning "$($m.Name): $($_.Exception.Message)" }
 }
-Write-Host 'Done. SharePoint data access governance cmdlets need Microsoft.Online.SharePoint.PowerShell 16.0.25409 or later (16.0.27215.12000 or later for the Everyone and EEEU item reports).'
+Write-Host 'Done. Keep Microsoft.Online.SharePoint.PowerShell current: the data access governance cmdlets are only in recent versions. Run ./Test-Prerequisites.ps1 to check access requirements.'
