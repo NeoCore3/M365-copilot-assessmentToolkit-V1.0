@@ -22,9 +22,11 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
-          $r = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          # tests/ is excluded: the mocks deliberately use fake plain-text tokens and shadow Microsoft cmdlets.
+          $r = @(Get-ChildItem -Path ./*.ps1, ./src/*.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Error })
           $r | Format-Table -AutoSize
-          if ($r) { exit 1 }
+          foreach ($x in $r) { Write-Host "::error file=$($x.ScriptName),line=$($x.Line)::$($x.RuleName): $($x.Message)" }
+          if ($r.Count) { exit 1 }
   module-compat:
     runs-on: windows-latest
     steps:

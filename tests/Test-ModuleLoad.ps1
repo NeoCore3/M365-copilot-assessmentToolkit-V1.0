@@ -9,7 +9,8 @@
     Also reports, for information, what happens when the modules share one process (the cause of the original failures).
 #>
 param([switch]$SkipSharedProcess)
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
+trap { if ($env:GITHUB_ACTIONS) { Write-Host ("::error title=Test-ModuleLoad crashed::{0} {1}" -f $_.Exception.Message, ($_.InvocationInfo.PositionMessage -replace "`r?`n", ' ')) }; throw }
 $root = Split-Path $PSScriptRoot -Parent
 $pwsh = (Get-Process -Id $PID).Path
 $loadError = 'Could not load file or assembly|type initializer|manifest definition|FileLoadException|FileNotFoundException|TypeLoadException|MissingMethodException'
@@ -46,7 +47,9 @@ foreach ($k in $probes.Keys) {
     $bad = $out -match $loadError
     if ($k -eq 'SharePoint' -and $out -match 'commands=(\d) of 5' -and [int]$Matches[1] -lt 5) { $bad = $true }
     Write-Host ("[{0}] {1}: {2}" -f $(if ($bad) { 'FAIL' } else { 'PASS' }), $k, ($out.Trim() -replace '\s+', ' ')) -ForegroundColor $(if ($bad) { 'Red' } else { 'Green' })
-    if ($bad) { $fail++; if ($env:GITHUB_ACTIONS) { Write-Host "::error title=Module load ($k)::$(($out.Trim() -replace '\s+', ' ').Substring(0, [math]::Min(900, $out.Trim().Length)))" } }
+    $flat = ($out.Trim() -replace '\s+', ' '); if ($flat.Length -gt 1500) { $flat = $flat.Substring(0, 1500) }
+    if ($env:GITHUB_ACTIONS) { Write-Host ("::{0} title=Module load ({1})::{2}" -f $(if ($bad) { 'error' } else { 'warning' }), $k, $flat) }
+    if ($bad) { $fail++ }
     Remove-Item $script -ErrorAction SilentlyContinue
 }
 
@@ -56,7 +59,8 @@ if (-not $SkipSharedProcess) {
     (". '$root/src/Common.ps1'`n" + $probes.Graph + "`n" + $probes.Compliance + "`n" + $probes.Azure) | Set-Content -LiteralPath $shared -Encoding utf8
     $out = & $pwsh -NoProfile -NonInteractive -File $shared 2>&1 | Out-String
     Write-Host ($out.Trim()) -ForegroundColor Gray
-    if ($env:GITHUB_ACTIONS) { Write-Host "::notice title=Shared-process result::$((($out.Trim() -replace '\s+', ' ')).Substring(0, [math]::Min(900, $out.Trim().Length)))" }
+    $flat = ($out.Trim() -replace '\s+', ' '); if ($flat.Length -gt 1500) { $flat = $flat.Substring(0, 1500) }
+    if ($env:GITHUB_ACTIONS) { Write-Host "::notice title=Shared-process result::$flat" }
     Remove-Item $shared -ErrorAction SilentlyContinue
 }
 if ($fail) { Write-Host "$fail module group(s) failed to load" -ForegroundColor Red; exit 1 }
