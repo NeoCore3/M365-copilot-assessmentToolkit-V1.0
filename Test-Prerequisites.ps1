@@ -31,7 +31,12 @@ foreach ($m in $mods.Keys) {
     $needed = @($mods[$m] | Where-Object { $_ -in $want })
     if (-not $needed) { continue }
     $have = Get-Module -ListAvailable -Name $m | Sort-Object Version -Descending | Select-Object -First 1
-    if ($have) { Line OK "$m $($have.Version) (used by $($needed -join ', '))" }
+    $badList = @()
+    $cfgPath = Join-Path $PSScriptRoot 'config/modules.json'
+    if (Test-Path $cfgPath) { $bad = (Get-Content $cfgPath -Raw | ConvertFrom-Json).KnownBad | Where-Object Name -eq $m; if ($bad) { $badList = @($bad.Versions) } }
+    $usable = Get-Module -ListAvailable -Name $m | Where-Object { "$($_.Version)" -notin $badList } | Sort-Object Version -Descending | Select-Object -First 1
+    if ($have -and -not $usable) { Line FAIL "$m $($have.Version) is installed but known to fail to load. Run ./Install-Prerequisites.ps1 to add $($bad.Recommended)."; $ok = $false }
+    elseif ($have) { Line OK "$m $($usable.Version) will be used (used by $($needed -join ', '))" }
     else { Line FAIL "$m not installed (needed by $($needed -join ', ')). Run ./Install-Prerequisites.ps1"; $ok = $false }
 }
 if ('SharePoint' -in $want -and -not $IsWindows) { Line WARN 'Microsoft.Online.SharePoint.PowerShell is supported on Windows. On macOS or Linux, skip -Collect SharePoint and import the SharePoint admin center exports instead.' }

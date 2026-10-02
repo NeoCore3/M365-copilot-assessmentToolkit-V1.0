@@ -14,7 +14,7 @@ $script:PurviewCommands = @(
 function Invoke-PurviewCollection {
     param($CloudProfile, [string]$AdminUpn)
     try {
-        Import-Module ExchangeOnlineManagement -ErrorAction Stop
+        $v = Import-ModuleSafe -Name 'ExchangeOnlineManagement'; Write-Log "ExchangeOnlineManagement $v loaded"
         $p = @{ ErrorAction = 'Stop'; ShowBanner = $false }
         if ($CloudProfile.ComplianceConnectionUri) { $p.ConnectionUri = $CloudProfile.ComplianceConnectionUri; $p.AzureADAuthorizationEndpointUri = $CloudProfile.ComplianceAuthority }
         if ($AdminUpn) { $p.UserPrincipalName = $AdminUpn }
@@ -45,7 +45,7 @@ function Invoke-PurviewCollection {
 function Invoke-ExchangeCollection {
     param($CloudProfile, [string]$AdminUpn, [int]$AuditDays = 7)
     try {
-        Import-Module ExchangeOnlineManagement -ErrorAction Stop
+        $v = Import-ModuleSafe -Name 'ExchangeOnlineManagement'; Write-Log "ExchangeOnlineManagement $v loaded"
         $p = @{ ErrorAction = 'Stop'; ShowBanner = $false; ExchangeEnvironmentName = $CloudProfile.ExchangeEnvironmentName }
         if ($AdminUpn) { $p.UserPrincipalName = $AdminUpn }
         Write-Log 'Connecting to Exchange Online (audit configuration and Copilot audit sample)...'

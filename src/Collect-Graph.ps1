@@ -20,6 +20,16 @@ $script:GraphCollectors = @(
 
 function Get-GraphScopes { return @($script:GraphCollectors | ForEach-Object { $_.Scope } | Select-Object -Unique) }
 
+function Get-NextLink {
+    # '@odata.nextLink' contains a dot, so it cannot go through Get-Prop's dotted path.
+    param($Page)
+    if ($null -eq $Page) { return $null }
+    if ($Page -is [System.Collections.IDictionary]) { return $Page['@odata.nextLink'] }
+    $p = $Page.PSObject.Properties['@odata.nextLink']
+    if ($p) { return $p.Value }
+    return $null
+}
+
 function Invoke-GraphPaged {
     param([string]$Url, [switch]$Csv, [switch]$Single, [string]$GraphRoot)
     $rows = [System.Collections.Generic.List[object]]::new()
@@ -37,8 +47,9 @@ function Invoke-GraphPaged {
                 $body = $body.TrimStart([char]0xFEFF)
                 if ($body.TrimStart().StartsWith('{')) {
                     $j = $body | ConvertFrom-Json
-                    foreach ($r in @($j.value)) { $rows.Add($r) }
-                    $next = $j.'@odata.nextLink'
+                    $v = Get-Prop $j 'value'
+                    if ($null -ne $v) { foreach ($r in @($v)) { $rows.Add($r) } } else { $rows.Add($j) }
+                    $next = Get-NextLink $j
                 }
                 else { foreach ($r in @($body | ConvertFrom-Csv)) { $rows.Add($r) }; $next = $null }
             }
@@ -48,7 +59,7 @@ function Invoke-GraphPaged {
             $page = Invoke-MgGraphRequest -Method GET -Uri $next -OutputType PSObject
             if ($Single -and $page.PSObject.Properties['value']) { foreach ($r in @($page.value | Select-Object -First 1)) { $rows.Add($r) }; break }
             if ($page.PSObject.Properties['value']) { foreach ($r in @($page.value)) { $rows.Add($r) } } else { $rows.Add($page) }
-            $next = $page.'@odata.nextLink'
+            $next = Get-NextLink $page
         }
     }
     return , $rows.ToArray()
@@ -57,17 +68,19 @@ function Invoke-GraphPaged {
 function Invoke-GraphCollection {
     param($CloudProfile, [string]$TenantId, [string]$Cloud, [string]$ClientId)
     try {
-        Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+        $ver = Import-ModuleSafe -Name 'Microsoft.Graph.Authentication'
+        Write-Log "Microsoft.Graph.Authentication $ver loaded"
         $p = @{ TenantId = $TenantId; Environment = $CloudProfile.MgEnvironment; Scopes = (Get-GraphScopes); ContextScope = 'Process'; NoWelcome = $true; ErrorAction = 'Stop' }
         if ($ClientId) { $p.ClientId = $ClientId }
         Write-Log 'Connecting to Microsoft Graph (sign in with a read-only admin account)...'
         Connect-MgGraph @p | Out-Null
         $ctx = Get-MgContext
+        if (-not $ctx) { throw 'Sign-in did not complete.' }
         if ($ctx.TenantId -ne $TenantId) { throw "Signed-in tenant $($ctx.TenantId) does not match -TenantId $TenantId." }
         Write-Log "Graph connected as $($ctx.Account)" 'Ok'
     }
     catch {
-        $m = Add-Diagnostic 'Graph' 'Connect-MgGraph' $_ 'Install Microsoft.Graph.Authentication, confirm the tenant ID, and consent to the read-only scopes listed in docs/SETUP.md.'
+        $m = Add-Diagnostic 'Graph' 'Connect-MgGraph' $_ 'Confirm the tenant ID and consent to the read-only scopes in docs/PERMISSIONS.md. If the error mentions an assembly that could not be loaded, run ./Install-Prerequisites.ps1 (it installs a known-good Microsoft.Graph.Authentication version) and re-run with -Collect Graph.'
         foreach ($c in $script:GraphCollectors) { Add-Dataset -Id $c.Id -Workstream $c.Ws -Status 'Failed' -Source $c.Path -Explanation "Graph connection failed: $m" }
         return
     }

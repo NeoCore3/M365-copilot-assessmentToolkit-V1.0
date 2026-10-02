@@ -92,15 +92,28 @@ function Invoke-EvidenceImport {
     $rules = Get-Content -LiteralPath $RulesPath -Raw | ConvertFrom-Json
     $folders = @($EvidencePath | Where-Object { $_ }) + @($script:Ctx.ExtraEvidenceFolders)
     $files = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    $toolkitRoot = (Split-Path $PSScriptRoot -Parent).TrimEnd('\', '/')
+    $toolkitDirs = @('src', 'config', 'report', 'docs', 'tests', '.github', '.git', 'output')
+    $skipped = 0
     foreach ($f in $folders) {
         if (-not (Test-Path -LiteralPath $f)) { [void](Add-Diagnostic 'Import' 'Evidence folder' "Folder not found: $f" 'Check -EvidencePath.'); continue }
+        $isExtra = $f -in @($script:Ctx.ExtraEvidenceFolders)
+        $full = (Resolve-Path -LiteralPath $f).Path.TrimEnd('\', '/')
+        if ($full -eq $toolkitRoot) { Write-Log "Evidence path is the toolkit folder itself. Toolkit files and earlier run outputs are skipped; put the portal exports in their own folder and pass that with -EvidencePath." 'Warn' }
+        $runFolders = @(Get-ChildItem -LiteralPath $f -Filter 'manifest.json' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { Test-Path -LiteralPath (Join-Path $_.DirectoryName 'run.log') } | ForEach-Object { $_.DirectoryName })
         foreach ($fi in Get-ChildItem -LiteralPath $f -File -Recurse -ErrorAction SilentlyContinue) {
-            if ($fi.FullName.StartsWith($script:Ctx.OutDir)) { continue }
+            if (-not $isExtra -and $fi.FullName.StartsWith($script:Ctx.OutDir)) { continue }
+            if (-not $isExtra -and ($runFolders | Where-Object { $fi.FullName.StartsWith($_) })) { $skipped++; continue }
+            if (-not $isExtra -and $fi.FullName.StartsWith($toolkitRoot)) {
+                $rel = $fi.FullName.Substring($toolkitRoot.Length).TrimStart('\', '/')
+                $first = ($rel -split '[\\/]')[0]
+                if ($rel -notmatch '[\\/]' -or $first -in $toolkitDirs) { $skipped++; continue }
+            }
             if ($fi.Name -like '~$*') { continue }
             $files.Add($fi)
         }
     }
-    Write-Log "Evidence import: $($files.Count) files found in $($folders.Count) folder(s)"
+    Write-Log "Evidence import: $($files.Count) files found in $($folders.Count) folder(s)$(if ($skipped) { "; $skipped toolkit or earlier-output files skipped" })"
 
     $invList = [System.Collections.Generic.List[object]]::new()
     $hits = [System.Collections.Generic.List[object]]::new()

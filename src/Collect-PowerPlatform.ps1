@@ -1,13 +1,15 @@
-# Power Platform and Microsoft Fabric collectors (read-only, best effort). Requires Az.Accounts for delegated tokens.
+# Power Platform and Microsoft Fabric collectors (read-only). Requires Az.Accounts for delegated tokens.
 # Endpoints (Microsoft Learn):
 #   Environments (admin):  GET {BapRoot}/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01&$expand=properties.capacity
-#   Inventory (agents/apps/flows): POST {PowerPlatformApiRoot}/resourcequery/resources/query?api-version=2024-10-01 (delegated user only)
+#   Inventory (agents, apps, flows): POST {PowerPlatformApiRoot}/resourcequery/resources/query?api-version=2024-10-01 (delegated user only)
 #   Fabric tenant settings: GET {FabricRoot}/v1/admin/tenantsettings (Fabric administrator)
-# If token acquisition is refused for a resource, the dataset is marked Failed and the portal export import path applies.
+# All response fields are read with Get-Prop: a property the API omits becomes an empty value, never an error.
 
 function Get-DelegatedToken {
     param([string]$Resource)
-    $t = Get-AzAccessToken -ResourceUrl $Resource -ErrorAction Stop
+    $t = $null
+    try { $t = Get-AzAccessToken -ResourceUrl $Resource -AsSecureString -ErrorAction Stop -WarningAction SilentlyContinue }
+    catch { $t = Get-AzAccessToken -ResourceUrl $Resource -ErrorAction Stop -WarningAction SilentlyContinue }
     $tok = $t.Token
     if ($tok -is [System.Security.SecureString]) { $tok = [System.Net.NetworkCredential]::new('', $tok).Password }
     return $tok
@@ -15,11 +17,27 @@ function Get-DelegatedToken {
 
 function Connect-AzForTokens {
     param([string]$TenantId, $CloudProfile)
-    Import-Module Az.Accounts -ErrorAction Stop
+    $v = Import-ModuleSafe -Name 'Az.Accounts'
+    Write-Log "Az.Accounts $v loaded"
+    # Process-scoped settings only; nothing is written to the user's Az configuration.
+    try { Update-AzConfig -LoginExperienceV2 Off -DisplayBreakingChangeWarning $false -Scope Process -ErrorAction Stop | Out-Null } catch { }
     $ctx = Get-AzContext -ErrorAction SilentlyContinue
-    if (-not $ctx -or $ctx.Tenant.Id -ne $TenantId) {
+    if (-not $ctx -or (Get-Prop $ctx 'Tenant.Id') -ne $TenantId) {
         Write-Log 'Signing in with Az.Accounts for Power Platform and Fabric tokens...'
-        Connect-AzAccount -Tenant $TenantId -Environment $CloudProfile.AzEnvironment -ErrorAction Stop | Out-Null
+        Connect-AzAccount -Tenant $TenantId -Environment $CloudProfile.AzEnvironment -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+    }
+}
+
+function Invoke-PowerPlatformRequest {
+    param([string]$Method, [string]$Uri, [string]$Token, $Body)
+    $p = @{ Method = $Method; Uri = $Uri; Headers = @{ Authorization = "Bearer $Token" }; ErrorAction = 'Stop' }
+    if ($null -ne $Body) { $p.ContentType = 'application/json'; $p.Body = ($Body | ConvertTo-Json -Depth 12 -Compress) }
+    try { return Invoke-RestMethod @p }
+    catch {
+        $detail = ''
+        try { $detail = $_.ErrorDetails.Message } catch { }
+        if ($detail) { throw "$($_.Exception.Message) $detail" }
+        throw
     }
 }
 
@@ -31,7 +49,7 @@ function Invoke-PowerPlatformCollection {
     }
     try { Connect-AzForTokens -TenantId $TenantId -CloudProfile $CloudProfile }
     catch {
-        $m = Add-Diagnostic 'PowerPlatform' 'Connect-AzAccount' $_ 'Install Az.Accounts. Requires Power Platform Administrator or Dynamics 365 Administrator.'
+        $m = Add-Diagnostic 'PowerPlatform' 'Connect-AzAccount' $_ 'Install Az.Accounts. Environments need Power Platform Administrator; inventory works with Global Reader.'
         foreach ($id in 'PP_Environments', 'PP_Inventory') { Add-Dataset -Id $id -Workstream 'PowerPlatform' -Status 'Failed' -Source 'Az.Accounts' -Explanation $m }
         return
     }
@@ -40,47 +58,93 @@ function Invoke-PowerPlatformCollection {
         $tok = Get-DelegatedToken -Resource $CloudProfile.BapResource
         $url = "$($CloudProfile.BapRoot)/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01&`$expand=properties.capacity"
         $rows = [System.Collections.Generic.List[object]]::new()
-        while ($url) {
-            $r = Invoke-RestMethod -Method GET -Uri $url -Headers @{ Authorization = "Bearer $tok" } -ErrorAction Stop
-            foreach ($e in @($r.value)) {
-                $cap = @{}; foreach ($c in @($e.properties.capacity)) { if ($c.capacityType) { $cap[$c.capacityType] = $c.actualConsumption } }
-                $rows.Add([pscustomobject]@{
-                        EnvironmentId = $e.name; DisplayName = $e.properties.displayName; Sku = $e.properties.environmentSku
-                        Location = $e.location; IsDefault = $e.properties.isDefault; CreatedTime = $e.properties.createdTime
-                        HasDataverse = [bool]$e.properties.linkedEnvironmentMetadata
-                        ProtectionLevel = $e.properties.governanceConfiguration.protectionLevel
-                        DatabaseMB = $cap['Database']; FileMB = $cap['File']; LogMB = $cap['Log']
+        $guard = 0
+        while ($url -and $guard -lt 200) {
+            $guard++
+            $r = Invoke-PowerPlatformRequest -Method GET -Uri $url -Token $tok
+            foreach ($e in @(Get-Prop $r 'value')) {
+                if ($null -eq $e) { continue }
+                $cap = @{}
+                foreach ($c in @(Get-Prop $e 'properties.capacity')) { $ct = Get-Prop $c 'capacityType'; if ($ct) { $cap[$ct] = Get-Prop $c 'actualConsumption' } }
+                $rows.Add([pscustomobject][ordered]@{
+                        EnvironmentId   = Get-Prop $e 'name'
+                        DisplayName     = Get-Prop $e 'properties.displayName'
+                        Sku             = Get-Prop $e 'properties.environmentSku'
+                        Location        = Get-Prop $e 'location'
+                        IsDefault       = Get-Prop $e 'properties.isDefault'
+                        CreatedTime     = Get-Prop $e 'properties.createdTime'
+                        HasDataverse    = [bool](Get-Prop $e 'properties.linkedEnvironmentMetadata')
+                        ProtectionLevel = Get-Prop $e 'properties.governanceConfiguration.protectionLevel'
+                        DatabaseMB      = $cap['Database']; FileMB = $cap['File']; LogMB = $cap['Log']
                     })
             }
-            $url = $r.nextLink
+            $url = Get-Prop $r 'nextLink'
         }
         Add-Dataset -Id 'PP_Environments' -Workstream 'PowerPlatform' -Status ($(if ($rows.Count) { 'Collected' } else { 'Empty' })) -Source 'BAP admin environments API' -Explanation 'Environments with type, Dataverse, governance protection level as returned by the API (verify Managed Environments in the admin center), and capacity consumption in MB.' -Rows $rows.ToArray()
         Write-Log "PP_Environments: $($rows.Count) rows" 'Ok'
     }
-    catch { Add-Dataset -Id 'PP_Environments' -Workstream 'PowerPlatform' -Status 'Failed' -Source 'BAP admin environments API' -Explanation (Add-Diagnostic 'PowerPlatform' 'Environments' $_ 'If the token is refused, export environments from the Power Platform admin center and import them.') }
-    # Inventory (Copilot Studio agents, apps, flows)
+    catch { Add-Dataset -Id 'PP_Environments' -Workstream 'PowerPlatform' -Status 'Failed' -Source 'BAP admin environments API' -Explanation (Add-Diagnostic 'PowerPlatform' 'Environments' $_ 'Requires Power Platform Administrator or Dynamics 365 Administrator. Otherwise export environments from the Power Platform admin center.') }
+
+    # Inventory (Copilot Studio agents, agent flows, apps, cloud flows). Body follows the Microsoft Learn example;
+    # "$type" must be the first property of each clause, so every clause is an ordered dictionary.
     try {
         $tok = Get-DelegatedToken -Resource $CloudProfile.PowerPlatformApiResource
         $url = "$($CloudProfile.PowerPlatformApiRoot)/resourcequery/resources/query?api-version=2024-10-01"
-        $all = [System.Collections.Generic.List[object]]::new(); $skip = $null
+        $all = [System.Collections.Generic.List[object]]::new(); $skip = ''; $guard = 0
         do {
-            $body = @{ TableName = 'PowerPlatformResources'; Clauses = @(@{ '$type' = 'where'; FieldName = 'type'; Operator = 'in~'; Values = @("'microsoft.copilotstudio/agents'", "'microsoft.powerautomate/agentflows'", "'microsoft.powerapps/canvasapps'", "'microsoft.powerautomate/cloudflows'") }); Options = @{ Top = 1000 } }
-            if ($skip) { $body.Options.SkipToken = $skip }
-            $r = Invoke-RestMethod -Method POST -Uri $url -Headers @{ Authorization = "Bearer $tok"; 'Content-Type' = 'application/json' } -Body ($body | ConvertTo-Json -Depth 8) -ErrorAction Stop
-            foreach ($i in @($r.data)) {
-                $p = $i.properties
-                $all.Add([pscustomobject]@{
-                        Type = $i.type; Id = $i.name; DisplayName = $p.displayName; EnvironmentId = $p.environmentId
-                        CreatedIn = $p.createdIn; Model = $p.model; IsCLIAgent = $p.isCLIAgent; OwnerId = $p.ownerId; CreatedAt = $p.createdAt
-                        Connectors = (@($p.powerPlatformConnectors) | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.name } }) -join ', '
+            $guard++
+            $body = New-InventoryQuery -SkipToken $skip
+            $r = Invoke-PowerPlatformRequest -Method POST -Uri $url -Token $tok -Body $body
+            foreach ($i in @(Get-Prop $r 'data')) {
+                if ($null -eq $i) { continue }
+                $conn = @(Get-Prop $i 'properties.powerPlatformConnectors') | Where-Object { $_ } | ForEach-Object { if ($_ -is [string]) { $_ } else { Get-Prop $_ 'name' } }
+                $all.Add([pscustomobject][ordered]@{
+                        Type                 = Get-Prop $i 'type'
+                        Id                   = Get-Prop $i 'name'
+                        DisplayName          = Get-Prop $i 'properties.displayName'
+                        EnvironmentId        = Get-Prop $i 'properties.environmentId'
+                        EnvironmentName      = Get-Prop $i 'environmentName'
+                        EnvironmentType      = Get-Prop $i 'environmentType'
+                        IsManagedEnvironment = Get-Prop $i 'isManagedEnvironment'
+                        CreatedIn            = Get-Prop $i 'properties.createdIn'
+                        CreatedAt            = Get-Prop $i 'properties.createdAt'
+                        CreatedBy            = Get-Prop $i 'properties.createdBy'
+                        OwnerId              = Get-Prop $i 'properties.ownerId'
+                        Connectors           = (@($conn) -join ', ')
                     })
             }
-            $skip = $r.skipToken
-        } while ($skip)
-        Add-Dataset -Id 'PP_Inventory' -Workstream 'PowerPlatform' -Status ($(if ($all.Count) { 'Collected' } else { 'Empty' })) -Source 'Power Platform inventory API' -Explanation 'Copilot Studio agents, agent flows, canvas apps, and cloud flows.' -Rows $all.ToArray()
+            $skip = [string](Get-Prop $r 'skipToken')
+        } while ($skip -and $guard -lt 500)
+        Add-Dataset -Id 'PP_Inventory' -Workstream 'PowerPlatform' -Status ($(if ($all.Count) { 'Collected' } else { 'Empty' })) -Source 'Power Platform inventory API' -Explanation 'Copilot Studio agents, agent flows, canvas apps, and cloud flows, with environment type and Managed Environment state.' -Rows $all.ToArray()
         Write-Log "PP_Inventory: $($all.Count) rows" 'Ok'
     }
-    catch { Add-Dataset -Id 'PP_Inventory' -Workstream 'PowerPlatform' -Status 'Failed' -Source 'Power Platform inventory API' -Explanation (Add-Diagnostic 'PowerPlatform' 'Inventory' $_ 'The inventory API supports delegated users only. If refused, export Manage > Inventory from the Power Platform admin center and import it.') }
+    catch { Add-Dataset -Id 'PP_Inventory' -Workstream 'PowerPlatform' -Status 'Failed' -Source 'Power Platform inventory API' -Explanation (Add-Diagnostic 'PowerPlatform' 'Inventory' $_ 'Delegated sign-in only; Global Reader or Power Platform Administrator. If refused, export Manage > Inventory from the Power Platform admin center and import it.') }
+}
+
+function New-InventoryQuery {
+    param([string]$SkipToken = '')
+    $types = @("'microsoft.copilotstudio/agents'", "'microsoft.powerautomate/agentflows'", "'microsoft.powerapps/canvasapps'", "'microsoft.powerautomate/cloudflows'")
+    return [ordered]@{
+        Options   = [ordered]@{ Top = 1000; Skip = 0; SkipToken = $SkipToken }
+        TableName = 'PowerPlatformResources'
+        Clauses   = @(
+            [ordered]@{ '$type' = 'extend'; FieldName = 'joinKey'; Expression = 'tolower(tostring(properties.environmentId))' }
+            [ordered]@{
+                '$type'         = 'join'
+                JoinKind        = 'leftouter'
+                RightTable      = [ordered]@{
+                    TableName = 'PowerPlatformResources'
+                    Clauses   = @(
+                        [ordered]@{ '$type' = 'where'; FieldName = 'type'; Operator = '=='; Values = @("'microsoft.powerplatform/environments'") }
+                        [ordered]@{ '$type' = 'project'; FieldList = @('joinKey = tolower(name)', 'environmentName = properties.displayName', 'environmentType = properties.environmentType', 'isManagedEnvironment = properties.isManaged') }
+                    )
+                }
+                LeftColumnName  = 'joinKey'
+                RightColumnName = 'joinKey'
+            }
+            [ordered]@{ '$type' = 'where'; FieldName = 'type'; Operator = 'in~'; Values = $types }
+        )
+    }
 }
 
 function Invoke-FabricCollection {
@@ -89,22 +153,32 @@ function Invoke-FabricCollection {
     try {
         Connect-AzForTokens -TenantId $TenantId -CloudProfile $CloudProfile
         $tok = Get-DelegatedToken -Resource $CloudProfile.FabricResource
-        $url = "$($CloudProfile.FabricRoot)/v1/admin/tenantsettings"
-        $rows = [System.Collections.Generic.List[object]]::new()
-        while ($url) {
-            $r = Invoke-RestMethod -Method GET -Uri $url -Headers @{ Authorization = "Bearer $tok" } -ErrorAction Stop
-            foreach ($s in @($r.value)) {
-                $rows.Add([pscustomobject]@{
-                        SettingName = $s.settingName; Title = $s.title; Enabled = $s.enabled; Group = $s.tenantSettingGroup
-                        EnabledSecurityGroups = (@($s.enabledSecurityGroups) | ForEach-Object { $_.name }) -join '; '
-                        ExcludedSecurityGroups = (@($s.excludedSecurityGroups) | ForEach-Object { $_.name }) -join '; '
-                        DelegateToCapacity = $s.delegateToCapacity; DelegateToDomain = $s.delegateToDomain; DelegateToWorkspace = $s.delegateToWorkspace
+        $base = "$($CloudProfile.FabricRoot)/v1/admin/tenantsettings"
+        $url = $base
+        $rows = [System.Collections.Generic.List[object]]::new(); $guard = 0
+        while ($url -and $guard -lt 100) {
+            $guard++
+            $r = Invoke-PowerPlatformRequest -Method GET -Uri $url -Token $tok
+            $items = @(Get-Prop $r 'tenantSettings') + @(Get-Prop $r 'value')
+            foreach ($s in $items) {
+                if ($null -eq $s) { continue }
+                $rows.Add([pscustomobject][ordered]@{
+                        SettingName            = Get-Prop $s 'settingName'
+                        Title                  = Get-Prop $s 'title'
+                        Enabled                = Get-Prop $s 'enabled'
+                        Group                  = Get-Prop $s 'tenantSettingGroup'
+                        EnabledSecurityGroups  = (@(Get-Prop $s 'enabledSecurityGroups') | Where-Object { $_ } | ForEach-Object { Get-Prop $_ 'name' }) -join '; '
+                        ExcludedSecurityGroups = (@(Get-Prop $s 'excludedSecurityGroups') | Where-Object { $_ } | ForEach-Object { Get-Prop $_ 'name' }) -join '; '
+                        DelegateToCapacity     = Get-Prop $s 'delegateToCapacity'
+                        DelegateToDomain       = Get-Prop $s 'delegateToDomain'
+                        DelegateToWorkspace    = Get-Prop $s 'delegateToWorkspace'
                     })
             }
-            $url = if ($r.continuationToken) { "$($CloudProfile.FabricRoot)/v1/admin/tenantsettings?continuationToken=$([uri]::EscapeDataString($r.continuationToken))" } else { $null }
+            $ct = Get-Prop $r 'continuationToken'
+            $url = if ($ct) { "$base`?continuationToken=$([uri]::EscapeDataString($ct))" } else { $null }
         }
         Add-Dataset -Id 'FAB_TenantSettings' -Workstream 'Fabric' -Status ($(if ($rows.Count) { 'Collected' } else { 'Empty' })) -Source 'GET /v1/admin/tenantsettings' -Explanation 'Fabric tenant settings, including Copilot and Azure OpenAI settings.' -Rows $rows.ToArray()
         Write-Log "FAB_TenantSettings: $($rows.Count) rows" 'Ok'
     }
-    catch { Add-Dataset -Id 'FAB_TenantSettings' -Workstream 'Fabric' -Status 'Failed' -Source 'Fabric REST API' -Explanation (Add-Diagnostic 'Fabric' 'TenantSettings' $_ 'Requires Fabric administrator. If refused, capture the Fabric admin portal tenant settings as screenshots.') }
+    catch { Add-Dataset -Id 'FAB_TenantSettings' -Workstream 'Fabric' -Status 'Failed' -Source 'Fabric REST API' -Explanation (Add-Diagnostic 'Fabric' 'TenantSettings' $_ 'Requires Fabric Administrator. If refused, capture the Fabric admin portal tenant settings as screenshots.') }
 }

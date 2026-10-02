@@ -1,0 +1,10 @@
+{
+  "KnownBad": [
+    {
+      "Name": "Microsoft.Graph.Authentication",
+      "Versions": ["2.41.0"],
+      "Recommended": "2.40.0",
+      "Reason": "Connect-MgGraph fails to load System.Text.Json 10.0.0.0 on PowerShell 7.5 (.NET 9); see microsoftgraph/msgraph-sdk-powershell issue 3810"
+    }
+  ]
+}

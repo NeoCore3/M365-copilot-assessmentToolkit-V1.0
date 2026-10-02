@@ -2,17 +2,22 @@ name: validate
 on:
   push:
   pull_request:
+  workflow_dispatch:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Self-test (offline, synthetic data)
+      - name: Offline pipeline (synthetic portal exports)
         shell: pwsh
         run: ./tests/Test-Toolkit.ps1
+      - name: Live pipeline against a mock tenant (separate collector processes)
+        shell: pwsh
+        run: ./tests/Test-LiveCollectors.ps1
       - name: PSScriptAnalyzer (errors only)
         shell: pwsh
         run: |
@@ -20,3 +25,21 @@ jobs:
           $r = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
           $r | Format-Table -AutoSize
           if ($r) { exit 1 }
+  module-compat:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the latest Microsoft modules, then the toolkit prerequisites
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          foreach ($m in 'Microsoft.Graph.Authentication','ExchangeOnlineManagement','Microsoft.Online.SharePoint.PowerShell','Az.Accounts') { Install-Module $m -Scope CurrentUser -Force -AllowClobber }
+          ./Install-Prerequisites.ps1
+          Get-Module -ListAvailable Microsoft.Graph.Authentication,ExchangeOnlineManagement,Microsoft.Online.SharePoint.PowerShell,Az.Accounts | Select-Object Name,Version | Format-Table
+      - name: Prerequisite check
+        shell: pwsh
+        run: ./Test-Prerequisites.ps1
+      - name: Module load in isolated processes
+        shell: pwsh
+        run: ./tests/Test-ModuleLoad.ps1

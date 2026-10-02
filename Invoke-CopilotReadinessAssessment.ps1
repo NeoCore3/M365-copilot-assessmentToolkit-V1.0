@@ -46,7 +46,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolkitVersion = '1.0.0'
+$ToolkitVersion = '1.0.1'
 # pwsh -File passes "a,b" as one string; split lists that arrive that way (paths that exist are kept whole).
 $EvidencePath = @($EvidencePath | ForEach-Object { if ($_ -and -not (Test-Path -LiteralPath $_) -and $_ -match ',') { $_ -split ',' | ForEach-Object { $_.Trim() } } else { $_ } } | Where-Object { $_ })
 $Collect = @($Collect | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -72,15 +72,34 @@ Write-Log ("Mode: {0}; cloud: {1}" -f $(if ($OfflineOnly) { 'Offline (import onl
 
 $want = if ($Collect -contains 'All') { @('Graph', 'SharePoint', 'Purview', 'Exchange', 'PowerPlatform', 'Fabric') } else { $Collect }
 if (-not $OfflineOnly) {
-    if ('Graph' -in $want) { Invoke-GraphCollection -CloudProfile $cloudProfile -TenantId $TenantId -Cloud $Cloud -ClientId $GraphClientId }
+    # Each collector group runs in its own PowerShell process (see src/Invoke-Collector.ps1 for why).
+    $pwshExe = (Get-Process -Id $PID).Path
+    $groups = [System.Collections.Generic.List[object]]::new()
+    if ('Graph' -in $want) { $groups.Add(@{ Group = 'Graph'; Parts = 'Graph' }) }
     if ('SharePoint' -in $want) {
-        if ($SharePointAdminUrl) { Invoke-SharePointCollection -AdminUrl $SharePointAdminUrl -CloudProfile $cloudProfile -DagMode $DagMode }
+        if ($SharePointAdminUrl) { $groups.Add(@{ Group = 'SharePoint'; Parts = 'SharePoint' }) }
         else { foreach ($id in 'SPO_Tenant', 'SPO_Sites', 'SPO_OneDrive') { Add-Dataset -Id $id -Workstream 'SharePoint' -Status 'NotRequested' -Source 'Connect-SPOService' -Explanation 'Skipped: -SharePointAdminUrl was not supplied.' } }
     }
-    if ('Purview' -in $want) { Invoke-PurviewCollection -CloudProfile $cloudProfile -AdminUpn $AdminUpn }
-    if ('Exchange' -in $want) { Invoke-ExchangeCollection -CloudProfile $cloudProfile -AdminUpn $AdminUpn -AuditDays $AuditDays }
-    if ('PowerPlatform' -in $want) { Invoke-PowerPlatformCollection -TenantId $TenantId -CloudProfile $cloudProfile -Cloud $Cloud }
-    if ('Fabric' -in $want) { Invoke-FabricCollection -TenantId $TenantId -CloudProfile $cloudProfile -Cloud $Cloud }
+    $comp = @('Purview', 'Exchange' | Where-Object { $_ -in $want }); if ($comp) { $groups.Add(@{ Group = 'Compliance'; Parts = ($comp -join ',') }) }
+    $az = @('PowerPlatform', 'Fabric' | Where-Object { $_ -in $want }); if ($az) { $groups.Add(@{ Group = 'Azure'; Parts = ($az -join ',') }) }
+    foreach ($g in $groups) {
+        Write-Log ("--- Collector group: {0} ({1}) in a separate PowerShell process ---" -f $g.Group, $g.Parts)
+        $childArgs = @('-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $root 'src/Invoke-Collector.ps1'),
+            '-Group', $g.Group, '-Parts', $g.Parts, '-OutDir', $outDir, '-TenantId', $TenantId, '-Cloud', $Cloud,
+            '-DagMode', $DagMode, '-AuditDays', "$AuditDays")
+        if ($CustomerName) { $childArgs += @('-CustomerName', $CustomerName) }
+        if ($AdminUpn) { $childArgs += @('-AdminUpn', $AdminUpn) }
+        if ($SharePointAdminUrl) { $childArgs += @('-SharePointAdminUrl', $SharePointAdminUrl) }
+        if ($GraphClientId) { $childArgs += @('-GraphClientId', $GraphClientId) }
+        if ($env:CRT_TEST_MOCKS) { $childArgs += @('-TestMocks', $env:CRT_TEST_MOCKS) }
+        & $pwshExe @childArgs
+        $resultFile = Join-Path $outDir "raw/collector-$($g.Group).clixml"
+        if (-not (Merge-CollectorResult -Path $resultFile)) {
+            [void](Add-Diagnostic $g.Group 'Collector process' "The $($g.Group) collector process ended without writing results (exit code $LASTEXITCODE)." 'Run again with -Collect for this group and read run.log.')
+        }
+        else { Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue }
+    }
+    Write-CollectionSummary
 }
 
 if ($EvidencePath -or $script:Ctx.ExtraEvidenceFolders.Count) {
@@ -99,4 +118,7 @@ $res = Export-Results -TemplatePath (Join-Path $root 'report/dashboard.template.
 Write-Log ("Automated readiness indicator: {0}/100 ({1}); {2}% of checks scored" -f $res.Scores.Overall, $res.Scores.Rating, $res.Scores.CoveragePct) 'Ok'
 Write-Log "Dashboard: $($res.Html)" 'Ok'
 Write-Log "CSV exports: $(Join-Path $outDir 'csv')" 'Ok'
+if (-not $OfflineOnly -and @($script:Ctx.Status | Where-Object { $_.Origin -eq 'Collected' -and $_.Status -in @('Collected', 'Empty') }).Count -eq 0) {
+    Write-Log 'No tenant data was collected. Open csv/diagnostics.csv (or the dashboard Diagnostics page) for the reason and fix before relying on this report.' 'Error'
+}
 Write-Warning 'The output folder contains tenant data (user names, site URLs, agent names). Store it with client data controls and do not commit it to source control.'

@@ -3,28 +3,39 @@
 # and the SharePoint Administrator role. DAG snapshot reports need SharePoint Advanced Management.
 
 function Connect-SpoAdmin {
+    <#
+      Microsoft Learn: in PowerShell 7 import the SharePoint module with -UseWindowsPowerShell. The toolkit tries a native
+      load first (works with recent module versions), and if the module or the sign-in fails, retries once through
+      Windows PowerShell compatibility. Runs in its own process, so no other module's authentication library interferes.
+    #>
     param([string]$AdminUrl, $CloudProfile)
-    $imported = $false
-    try { Import-Module Microsoft.Online.SharePoint.PowerShell -ErrorAction Stop -WarningAction SilentlyContinue; $imported = $true }
-    catch {
-        if ($IsWindows) { Import-Module Microsoft.Online.SharePoint.PowerShell -UseWindowsPowerShell -ErrorAction Stop -WarningAction SilentlyContinue; $imported = $true }
-        else { throw }
-    }
     $p = @{ Url = $AdminUrl; ErrorAction = 'Stop' }
     if ($CloudProfile.SharePointRegion -and $CloudProfile.SharePointRegion -ne 'Default') { $p.Region = $CloudProfile.SharePointRegion }
+    $firstError = $null
+    try {
+        $v = Import-ModuleSafe -Name 'Microsoft.Online.SharePoint.PowerShell' -Extra @{ DisableNameChecking = $true }
+        Write-Log "Microsoft.Online.SharePoint.PowerShell $v loaded (native)"
+        Connect-SPOService @p | Out-Null
+        return 'Native'
+    }
+    catch { $firstError = $_.Exception.Message }
+    if (-not $IsWindows) { throw "SharePoint module failed: $firstError (the module is supported on Windows only)" }
+    Write-Log "Native SharePoint sign-in failed ($firstError). Retrying through Windows PowerShell compatibility..." 'Warn'
+    Remove-Module Microsoft.Online.SharePoint.PowerShell -Force -ErrorAction SilentlyContinue
+    Import-Module Microsoft.Online.SharePoint.PowerShell -UseWindowsPowerShell -DisableNameChecking -ErrorAction Stop -WarningAction SilentlyContinue
     Connect-SPOService @p | Out-Null
-    return $imported
+    return 'WindowsPowerShell'
 }
 
 function Invoke-SharePointCollection {
     param([string]$AdminUrl, $CloudProfile, [ValidateSet('None', 'Start', 'Export')][string]$DagMode = 'None')
     try {
         Write-Log "Connecting to SharePoint admin $AdminUrl ..."
-        Connect-SpoAdmin -AdminUrl $AdminUrl -CloudProfile $CloudProfile | Out-Null
-        Write-Log 'SharePoint connected' 'Ok'
+        $how = Connect-SpoAdmin -AdminUrl $AdminUrl -CloudProfile $CloudProfile
+        Write-Log "SharePoint connected ($how)" 'Ok'
     }
     catch {
-        $m = Add-Diagnostic 'SharePoint' 'Connect-SPOService' $_ 'Install the latest Microsoft.Online.SharePoint.PowerShell module and use the tenant admin URL (https://<tenant>-admin.sharepoint.com). Requires SharePoint Administrator or Global Reader where supported.'
+        $m = Add-Diagnostic 'SharePoint' 'Connect-SPOService' $_ 'Install the latest Microsoft.Online.SharePoint.PowerShell module and use the tenant admin URL (https://<tenant>-admin.sharepoint.com). Requires the SharePoint Administrator role (Learn lists no read-only role for this module). On Windows, Windows PowerShell 5.1 must be present for the compatibility fallback.'
         foreach ($id in 'SPO_Tenant', 'SPO_Sites', 'SPO_OneDrive') { Add-Dataset -Id $id -Workstream 'SharePoint' -Status 'Failed' -Source 'Connect-SPOService' -Explanation $m }
         return
     }
@@ -82,13 +93,15 @@ function Export-DagReports {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     try { $all = @(Get-SPODataAccessGovernanceInsight -ErrorAction Stop) }
     catch { [void](Add-Diagnostic 'SharePoint DAG' 'Get-SPODataAccessGovernanceInsight' $_); return }
-    $latest = $all | Where-Object { "$($_.Status)" -match 'complet|succe|ready' } | Group-Object { "$($_.ReportEntity)|$($_.Workload)" } | ForEach-Object { $_.Group | Sort-Object { [datetime]$_.CreatedDateTime } -Descending | Select-Object -First 1 }
+    $latest = $all | Where-Object { "$(Get-Prop $_ 'Status')" -match 'complet|succe|ready' } | Group-Object { "$(Get-Prop $_ 'ReportEntity')|$(Get-Prop $_ 'Workload')" } | ForEach-Object { $_.Group | Sort-Object { ConvertTo-Date (Get-Prop $_ 'CreatedDateTime') } -Descending | Select-Object -First 1 }
+    if (-not $latest) { Write-Log 'No completed data access governance reports found yet. Re-run later with -DagMode Export.' 'Warn' }
     foreach ($r in $latest) {
         try {
-            Export-SPODataAccessGovernanceInsight -ReportID $r.ReportId -DownloadPath $dir -ErrorAction Stop | Out-Null
-            Write-Log "DAG report exported: $($r.ReportEntity) $($r.Workload)" 'Ok'
+            $rid = Get-Prop $r 'ReportId'; if (-not $rid) { $rid = Get-Prop $r 'Id' }
+            Export-SPODataAccessGovernanceInsight -ReportID $rid -DownloadPath $dir -ErrorAction Stop | Out-Null
+            Write-Log "DAG report exported: $(Get-Prop $r 'ReportEntity') $(Get-Prop $r 'Workload')" 'Ok'
         }
-        catch { [void](Add-Diagnostic 'SharePoint DAG' "Export $($r.ReportEntity)" $_) }
+        catch { [void](Add-Diagnostic 'SharePoint DAG' "Export $(Get-Prop $r 'ReportEntity')" $_) }
     }
     $script:Ctx.ExtraEvidenceFolders += , $dir
 }

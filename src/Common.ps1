@@ -1,5 +1,6 @@
 # Common helpers: run context, logging, dataset registry, safe CSV export, XLSX reader, field access.
-Set-StrictMode -Version 2.0
+# StrictMode is intentionally not enabled: Microsoft APIs omit properties freely, and a missing property must
+# read as $null (then reported as no data), never stop a collector.
 
 function New-RunContext {
     param([string]$OutDir, [string]$CustomerName, [string]$TenantId, [string]$Cloud)
@@ -293,4 +294,84 @@ function Get-SummaryPairs {
     $h = [ordered]@{}
     foreach ($r in $SheetRows) { if ($r.Count -ge 2 -and $r[0] -and $null -ne $r[1] -and "$($r[1])" -ne '') { $h[[string]$r[0]] = $r[1] } }
     return $h
+}
+
+function Get-Prop {
+    <# Safe nested property access: Get-Prop $obj 'a.b.c'. Returns $null when any segment is missing. #>
+    param($Object, [string]$Path)
+    $cur = $Object
+    foreach ($p in $Path.Split('.')) {
+        if ($null -eq $cur) { return $null }
+        if ($cur -is [System.Collections.IDictionary]) { if ($cur.Contains($p)) { $cur = $cur[$p] } else { return $null }; continue }
+        $prop = $cur.PSObject.Properties[$p]
+        if (-not $prop) { return $null }
+        $cur = $prop.Value
+    }
+    return $cur
+}
+
+# ---------- Collector isolation ----------
+# Each collector group runs in its own PowerShell process because the Microsoft Graph, SharePoint, Exchange Online,
+# and Az modules ship different versions of the same authentication libraries (MSAL, System.Text.Json). Loading
+# them into one process makes whichever module loads second fail. The child saves its results; the parent merges them.
+
+function Save-CollectorResult {
+    param([string]$Path)
+    $payload = [ordered]@{
+        Datasets = $script:Ctx.Datasets; Status = @($script:Ctx.Status); Diagnostics = @($script:Ctx.Diagnostics)
+        ExtraEvidenceFolders = @($script:Ctx.ExtraEvidenceFolders)
+    }
+    Export-Clixml -InputObject $payload -Path $Path -Depth 12
+}
+
+function Merge-CollectorResult {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    $r = Import-Clixml -LiteralPath $Path
+    foreach ($k in $r.Datasets.Keys) {
+        $d = $r.Datasets[$k]
+        $entry = [ordered]@{}
+        foreach ($p in $d.Keys) { $entry[$p] = $d[$p] }
+        $entry.Rows = @($d.Rows)
+        $script:Ctx.Datasets[$k] = $entry
+    }
+    foreach ($s in $r.Status) { $script:Ctx.Status.Add($s) }
+    foreach ($x in $r.Diagnostics) { $script:Ctx.Diagnostics.Add($x) }
+    foreach ($f in $r.ExtraEvidenceFolders) { if ($f) { $script:Ctx.ExtraEvidenceFolders += , $f } }
+    return $true
+}
+
+function Import-ModuleSafe {
+    <#
+      Imports the newest installed version of a module, skipping versions listed as broken in config/modules.json.
+      Returns the version imported. Throws with guidance when only broken versions are installed.
+    #>
+    param([string]$Name, [hashtable]$Extra = @{})
+    $bad = @()
+    $cfg = Join-Path (Split-Path $PSScriptRoot -Parent) 'config/modules.json'
+    if (Test-Path -LiteralPath $cfg) {
+        $j = Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json
+        $entry = $j.KnownBad | Where-Object { $_.Name -eq $Name }
+        if ($entry) { $bad = @($entry.Versions) }
+    }
+    $all = @(Get-Module -ListAvailable -Name $Name | Sort-Object Version -Descending)
+    if (-not $all.Count) { throw "$Name is not installed. Run ./Install-Prerequisites.ps1." }
+    $good = @($all | Where-Object { "$($_.Version)" -notin $bad })
+    if (-not $good.Count) { throw "Only $Name $($all[0].Version) is installed, and that version is known to fail to load ($($j.KnownBad | Where-Object { $_.Name -eq $Name } | ForEach-Object { $_.Reason })). Install a working version: Install-Module $Name -RequiredVersion $(($j.KnownBad | Where-Object { $_.Name -eq $Name }).Recommended) -Scope CurrentUser" }
+    $pick = $good[0]
+    Import-Module -Name $pick.Path -ErrorAction Stop -WarningAction SilentlyContinue @Extra
+    return "$($pick.Version)"
+}
+
+function Write-CollectionSummary {
+    $rows = @($script:Ctx.Status | Where-Object { $_.Origin -eq 'Collected' })
+    if (-not $rows.Count) { return }
+    Write-Log '--- Collection summary ---'
+    foreach ($g in ($rows | Group-Object Workstream)) {
+        $ok = @($g.Group | Where-Object { $_.Status -in @('Collected', 'Empty') }).Count
+        $bad = @($g.Group | Where-Object Status -eq 'Failed').Count
+        $lvl = if ($bad -and -not $ok) { 'Error' } elseif ($bad) { 'Warn' } else { 'Ok' }
+        Write-Log ("{0,-14} collected {1}, failed {2}, other {3}" -f $g.Name, $ok, $bad, ($g.Count - $ok - $bad)) $lvl
+    }
+    foreach ($d in ($script:Ctx.Diagnostics | Select-Object -First 8)) { Write-Log ("  {0} / {1}: {2}" -f $d.Area, $d.Operation, $d.Message) 'Warn' }
 }

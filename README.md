@@ -11,6 +11,8 @@ It supports the Discover phase of a Copilot readiness, enablement, and expansion
 
 ## How it works
 
+Each live collector group (Graph; SharePoint; Purview and Exchange; Power Platform and Fabric) runs in its own PowerShell process, because the Microsoft modules ship conflicting versions of the same authentication libraries. Expect one sign-in prompt per group.
+
 ```
  Read-only collection (optional)          Portal exports (no API)            Analysis                Output
  ---------------------------------        ------------------------           ----------------        -------------------------
@@ -68,7 +70,7 @@ Open `output/<Customer>-<timestamp>/CopilotReadinessDashboard.html` in any brows
 | `-TenantId` | Tenant GUID. Required unless `-OfflineOnly`. The signed-in tenant must match. |
 | `-CustomerName` | Shown on the dashboard and used in the output folder name. |
 | `-Cloud` | `Commercial` (default), `GCC`, or `GCCHigh`. See [docs/SETUP.md](docs/SETUP.md). |
-| `-EvidencePath` | One or more folders with portal exports (CSV, XLSX) and screenshot packs (DOCX). Searched recursively. |
+| `-EvidencePath` | One or more folders with portal exports (CSV, XLSX) and screenshot packs (DOCX). Searched recursively. Use a folder of client exports, not the toolkit folder. |
 | `-OutputPath` | Parent folder for results. Default `./output`. |
 | `-Collect` | `All` (default) or any of `Graph, SharePoint, Purview, Exchange, PowerPlatform, Fabric`. |
 | `-OfflineOnly` | No sign-in. Import and analyze evidence files only. |

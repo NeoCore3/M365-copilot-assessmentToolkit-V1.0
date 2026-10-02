@@ -19,20 +19,6 @@ $script:Domains = [ordered]@{
     GOV = @{ Name = 'AI Governance and Operating Model'; Weight = 6 }
 }
 
-function Get-Prop {
-    <# Safe nested property access under StrictMode: Get-Prop $obj 'a.b.c' #>
-    param($Object, [string]$Path)
-    $cur = $Object
-    foreach ($p in $Path.Split('.')) {
-        if ($null -eq $cur) { return $null }
-        if ($cur -is [System.Collections.IDictionary]) { if ($cur.Contains($p)) { $cur = $cur[$p] } else { return $null } ; continue }
-        $prop = $cur.PSObject.Properties[$p]
-        if (-not $prop) { return $null }
-        $cur = $prop.Value
-    }
-    return $cur
-}
-
 function Set-Metric {
     param([string]$Key, [string]$Domain, [string]$Label, $Value, [string]$Denominator = '', [string]$Source = '', [string]$Note = '', [ValidateSet('n', 'pct', 'text', 'date')][string]$Kind = 'n')
     $display = switch ($Kind) {
@@ -174,9 +160,10 @@ function Measure-Usage {
             Set-Metric 'use.noActivity' 'USE' 'Users with no activity in the report period' $none -Denominator $den -Source $us.Source
             # Per-app activity
             # Portal export: "Last activity date of Word Copilot (UTC)"; Graph CSV: "Word Copilot Last Activity Date"
-            $appCols = @($map.Values | Where-Object { $_ -match '^Last activity date of (.+?) \(UTC\)$' -or ($_ -match '^(.+?) Last Activity Date$' -and $_ -ne $cLast) })
+            # Portal: "Last activity date of Word Copilot (UTC)"; Graph CSV: "Word Copilot Last Activity Date"; Graph JSON: "wordCopilotLastActivityDate"
+            $appCols = @($map.Values | Where-Object { $_ -ne $cLast -and ($_ -match '^Last activity date of (.+?) \(UTC\)$' -or $_ -match '^(.+?) Last Activity Date$' -or $_ -cmatch '^[a-z][A-Za-z0-9]+LastActivityDate$') })
             foreach ($c in $appCols) {
-                $app = if ($c -match '^Last activity date of (.+?) \(UTC\)$') { $Matches[1] } else { ([regex]::Match($c, '^(.+?) Last Activity Date$')).Groups[1].Value }
+                $app = if ($c -match '^Last activity date of (.+?) \(UTC\)$') { $Matches[1] } elseif ($c -match '^(.+?) Last Activity Date$') { $Matches[1] } else { (($c -creplace 'LastActivityDate$', '') -creplace '([a-z0-9])([A-Z])', '$1 $2') }
                 $any = 0; $r30 = 0
                 foreach ($r in $rows) { $d = ConvertTo-Date (Get-Val $r $c); if ($d) { $any++; if (($ref - $d).TotalDays -le 30) { $r30++ } } }
                 $key = 'use.app.' + (ConvertTo-Key $app)
@@ -509,7 +496,25 @@ function Measure-PowerPlatform {
     }
     elseif (($pi = Get-FirstDataset @('PP_Inventory'))) {
         $ag = @($pi.Rows | Where-Object { "$(Get-Prop $_ 'Type')" -match 'copilotstudio/agents' })
-        Set-Metric 'pp.agents' 'PP' 'Copilot Studio agents (inventory API)' $ag.Count -Source $pi.Source
+        $n = $ag.Count; $den = "{0:N0} agents" -f $n
+        Set-Metric 'pp.agents' 'PP' 'Copilot Studio agents (inventory API)' $n -Source $pi.Source
+        if ($n) {
+            $def = @($ag | Where-Object { "$(Get-Prop $_ 'EnvironmentType')" -eq 'Default' }).Count
+            $typed = @($ag | Where-Object { "$(Get-Prop $_ 'EnvironmentType')" -ne '' }).Count
+            if ($typed) {
+                Set-Metric 'pp.agents.default' 'PP' 'Agents in the default environment' $def -Denominator $den -Source $pi.Source
+                Set-Metric 'pp.agents.defaultPct' 'PP' 'Agents in the default environment (percent)' (Get-Pct $def $n) -Kind pct -Denominator $den -Source $pi.Source
+            }
+            $mg = @($ag | Where-Object { $null -ne (ConvertTo-Bool (Get-Prop $_ 'IsManagedEnvironment')) })
+            if ($mg.Count) {
+                $unm = @($mg | Where-Object { -not (ConvertTo-Bool (Get-Prop $_ 'IsManagedEnvironment')) }).Count
+                Set-Metric 'pp.agents.unmanagedPct' 'PP' 'Agents in environments that are not Managed Environments' (Get-Pct $unm $mg.Count) -Kind pct -Denominator ("{0:N0} of {1:N0} agents with a known state" -f $unm, $mg.Count) -Source $pi.Source
+            }
+            $creators = @($ag | ForEach-Object { "$(Get-Prop $_ 'CreatedBy')" } | Where-Object { $_ } | Select-Object -Unique).Count
+            if ($creators) { Set-Metric 'pp.agents.creators' 'PP' 'Distinct agent creators' $creators -Denominator $den -Source $pi.Source }
+            $dv = @($ag | Where-Object { "$(Get-Prop $_ 'Connectors')" -match 'dataverse|commondataservice' }).Count
+            Set-Metric 'dv.agentsUsingDataverse' 'DV' 'Agents using a Dataverse connector' $dv -Denominator $den -Source $pi.Source
+        }
     }
     $fl = Get-FirstDataset @('IMP_AgentFlows')
     if ($fl) {

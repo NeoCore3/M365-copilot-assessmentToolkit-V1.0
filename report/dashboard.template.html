@@ -226,6 +226,15 @@ function renderOverview(){
   var sc = S.Overall, r=60, circ=2*Math.PI*r, off = circ*(1-(sc||0)/100);
   var crit = D.checks.filter(function(x){return x.Status==='Fail'||x.Status==='Warn';}).sort(function(a,b){return (RISKORDER[a.Risk]-RISKORDER[b.Risk])||(a.Status==='Fail'?-1:1);}).slice(0,8);
   var h = '';
+  var coll = D.datasets.filter(function(d){return d.Origin==='Collected' && d.Status!=='NotRequested' && d.Status!=='Unsupported';});
+  var collFail = coll.filter(function(d){return d.Status==='Failed';});
+  var imp = D.datasets.filter(function(d){return d.Origin==='Imported' && d.Status==='Imported';});
+  if(coll.length && collFail.length){
+    h += '<div class="note" style="border-color:var(--fail);background:var(--failbg)"><b>Live collection problems:</b> '+collFail.length+' of '+coll.length+' collected datasets failed. '+(collFail.length===coll.length?'No tenant data was collected, so this report reflects imported files only. ':'')+'Open <a href="#" id="goDiag">Diagnostics</a> for the cause and fix of each failure, then re-run the affected collectors with -Collect.</div>';
+  }
+  if(!coll.length && !imp.length){
+    h += '<div class="note" style="border-color:var(--warn);background:var(--warnbg)"><b>No data:</b> nothing was collected or imported. Supply -EvidencePath with portal exports, or run live collection.</div>';
+  }
   h += '<div class="note">This dashboard is an automated readiness indicator built from read-only tenant collection and imported portal exports. Figures are computed from the raw data with their denominators. It does not replace the consultant-scored readiness scorecard in the written assessment. Checks without data are shown as <b>Not assessed</b> and are excluded from the score, never counted as failures.</div>';
   h += '<div class="grid g2"><div class="card"><div class="hero"><div class="ring"><svg width="170" height="170"><circle cx="85" cy="85" r="'+r+'" fill="none" stroke="var(--panel2)" stroke-width="16"/><circle cx="85" cy="85" r="'+r+'" fill="none" stroke="'+scoreColor(sc)+'" stroke-width="16" stroke-linecap="round" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'"/></svg><div class="c"><b>'+(sc==null?'n/a':sc)+'</b><span>of 100</span></div></div>';
   h += '<div><h3>Automated readiness indicator</h3><div style="margin:6px 0 10px"><span class="rating '+ratingCls(S.Rating)+'">'+esc(S.Rating)+'</span></div>';
@@ -248,6 +257,7 @@ function renderOverview(){
   h += '</div>';
   if(crit.length){ h += '<h2 class="sec">Priority findings</h2><div class="tbl tblwrap"><table><thead><tr><th>Check</th><th>Risk</th><th>Status</th><th>Finding</th></tr></thead><tbody>'+crit.map(function(x){return '<tr class="click" data-id="'+esc(x.Id)+'"><td><b>'+esc(x.Id)+'</b> '+esc(x.Title)+'</td><td><span class="risk k-'+x.Risk+'">'+x.Risk+'</span></td><td>'+chip(x.Status)+'</td><td>'+hl(x.Finding)+'</td></tr>';}).join('')+'</tbody></table></div>'; }
   el('v-overview').innerHTML = h;
+  var gd = el('goDiag'); if(gd){ gd.onclick=function(e){e.preventDefault();show('diagnostics');}; }
   el('v-overview').querySelectorAll('.dom').forEach(function(x){x.onclick=function(){show('domain',x.getAttribute('data-d'));};});
   bindRows(el('v-overview'));
 }

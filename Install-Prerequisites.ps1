@@ -19,4 +19,15 @@ foreach ($m in $modules) {
     }
     catch { Write-Warning "$($m.Name): $($_.Exception.Message)" }
 }
+# Make sure a known-good version is present when the newest release is known to fail (config/modules.json).
+$cfg = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config/modules.json') -Raw | ConvertFrom-Json
+foreach ($b in $cfg.KnownBad) {
+    $installed = @(Get-Module -ListAvailable -Name $b.Name)
+    if (-not $installed.Count) { continue }
+    $good = @($installed | Where-Object { "$($_.Version)" -notin @($b.Versions) })
+    if (-not $good.Count) {
+        Write-Host "Installing $($b.Name) $($b.Recommended) alongside $($installed[0].Version): $($b.Reason)"
+        try { Install-Module -Name $b.Name -RequiredVersion $b.Recommended -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop } catch { Write-Warning "$($b.Name) $($b.Recommended): $($_.Exception.Message)" }
+    }
+}
 Write-Host 'Done. Keep Microsoft.Online.SharePoint.PowerShell current: the data access governance cmdlets are only in recent versions. Run ./Test-Prerequisites.ps1 to check access requirements.'

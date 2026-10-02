@@ -4,6 +4,11 @@ Every failure is recorded in `csv/diagnostics.csv` and on the dashboard Diagnost
 
 | Symptom | Cause and fix |
 |---|---|
+| Every collector fails within a second and the report is empty | You are running v1.0.0, which loaded all Microsoft modules into one process. Update to 1.0.1 or later; each collector group now runs in its own process. |
+| `Could not load file or assembly 'System.Text.Json, Version=10.0.0.0'` at Connect-MgGraph | Microsoft.Graph.Authentication 2.41.0 on PowerShell 7.5. Run `./Install-Prerequisites.ps1` (adds 2.40.0; the toolkit skips 2.41.0 automatically). |
+| `Could not load file or assembly ... Microsoft.Identity.Client.dll ... manifest definition does not match` | Another module's authentication library was already loaded. Fixed by process isolation in 1.0.1. If it still appears, close all PowerShell windows and run from a fresh `pwsh -NoProfile`. |
+| `No valid OAuth 2.0 authentication session exists` (SharePoint) | Same cause as above. 1.0.1 also retries through Windows PowerShell compatibility automatically. |
+| Evidence import counts toolkit files (for example README.md) | -EvidencePath points at the toolkit folder. Put the portal exports in their own folder and pass that path. 1.0.1 skips toolkit files and earlier outputs. |
 | `Signed-in tenant ... does not match -TenantId` | The account signed in to a different tenant. Sign out (`Disconnect-MgGraph`) and use an account in the target tenant. |
 | Graph datasets Failed with 403 | Missing admin consent for a scope or missing role. See PERMISSIONS.md section 2. |
 | Graph_CopilotUsage fails with 403 but other Graph data works | The per-user Copilot usage API does not accept Global Reader. Add Reports Reader (or AI Administrator) to the account. |
